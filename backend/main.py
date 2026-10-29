@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.api.quran import router as quran_router
+from backend.api.prayer import router as prayer_router
 from backend.db.database import Base, engine
 from backend.db import models  # noqa: F401
 
@@ -23,6 +24,7 @@ app = FastAPI(
 )
 
 app.include_router(quran_router)
+app.include_router(prayer_router)
 
 
 @app.get("/")
