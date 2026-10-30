@@ -1,36 +1,35 @@
+import hashlib
+import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from jwt.exceptions import InvalidTokenError
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pwdlib import PasswordHash
+from pwdlib.exceptions import UnknownHashError
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
+from backend.core.auth_tokens import COOKIE_NAME, TOKEN_TTL, JWT_ISSUER, JWT_AUDIENCE, decode_session, jwt_secret, security_key
+from backend.core.csrf import (
+    bootstrap_context, clear_context, csrf_failure, issue_token, require_login_csrf, require_session_csrf,
+)
+from backend.core.request_security import UNSAFE_METHODS, rate_ip, require_trusted_origin
+from backend.core.auth_rate_limit import (
+    BOOTSTRAP_LIMIT, BOOTSTRAP_WINDOW, login_admission, refund_successful_login,
+    registration_admission, take_slot,
+)
 from backend.db.auth_models import User
 from backend.db.database import get_db
 
 
-COOKIE_NAME = "nafsiy_access_token"
-TOKEN_TTL = timedelta(hours=1)
-JWT_ISSUER = "nafsiy"
-JWT_AUDIENCE = "nafsiy-web"
-TRUSTED_ORIGINS = {"http://localhost:3000", "http://127.0.0.1:3000"}
 password_hash = PasswordHash.recommended()
 DUMMY_HASH = password_hash.hash(secrets.token_urlsafe(32))
-
-
-def require_trusted_origin(request: Request):
-    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
-        return
-    origin = request.headers.get("origin")
-    same_origin = f"{request.url.scheme}://{request.url.netloc}"
-    if origin and origin not in TRUSTED_ORIGINS and origin != same_origin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Untrusted request origin")
 
 
 router = APIRouter(
@@ -63,17 +62,11 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-def jwt_secret() -> str:
-    if len(settings.JWT_SECRET_KEY) < 32:
-        raise HTTPException(503, "JWT_SECRET_KEY must contain at least 32 characters")
-    return settings.JWT_SECRET_KEY
-
-
 def set_auth_cookie(response: Response, user_id: str, secret: str):
     now = datetime.now(timezone.utc)
     token = jwt.encode(
         {"sub": user_id, "iat": now, "exp": now + TOKEN_TTL,
-         "iss": JWT_ISSUER, "aud": JWT_AUDIENCE},
+         "iss": JWT_ISSUER, "aud": JWT_AUDIENCE, "jti": secrets.token_hex(16)},
         secret,
         algorithm="HS256",
     )
@@ -88,6 +81,7 @@ def set_auth_cookie(response: Response, user_id: str, secret: str):
         samesite="lax",
     )
     response.headers["Cache-Control"] = "no-store"
+    clear_context(response)
 
 
 def get_current_user(
@@ -98,60 +92,81 @@ def get_current_user(
     response.headers["Cache-Control"] = "no-store"
     token = request.cookies.get(COOKIE_NAME)
     if not token:
-        raise HTTPException(401, "Not authenticated")
-    secret = jwt_secret()
+        raise HTTPException(401, "Not authenticated", headers={"Cache-Control": "no-store"})
+    claims = decode_session(token)
+    user_id = claims["sub"]
     try:
-        claims = jwt.decode(
-            token,
-            secret,
-            algorithms=["HS256"],
-            issuer=JWT_ISSUER,
-            audience=JWT_AUDIENCE,
-            options={"require": ["sub", "iat", "exp", "iss", "aud"]},
-        )
-        user_id = claims["sub"]
-        if not isinstance(user_id, str) or len(user_id) != 32:
-            raise InvalidTokenError()
-    except InvalidTokenError:
-        raise HTTPException(401, "Invalid or expired session") from None
-    user = db.get(User, user_id)
-    if user is None or not user.is_active:
-        raise HTTPException(401, "Invalid or expired session")
-    return user
-
-
-@router.post("/register", response_model=UserResponse, status_code=201)
-def register(data: RegisterRequest, response: Response, db: Session = Depends(get_db)):
-    secret = jwt_secret()
-    if db.scalar(select(User.id).where(User.email == data.email)):
-        raise HTTPException(409, "Email is already registered")
-    user = User(email=str(data.email), password_hash=password_hash.hash(data.password))
-    db.add(user)
-    try:
-        db.commit()
-    except IntegrityError:
+        user = db.get(User, user_id)
+    except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(409, "Email is already registered") from None
-    db.refresh(user)
-    set_auth_cookie(response, user.id, secret)
+        raise HTTPException(503, "Authentication unavailable", headers={"Cache-Control": "no-store"}) from None
+    if user is None or not user.is_active:
+        raise HTTPException(401, "Invalid or expired session", headers={"Cache-Control": "no-store"})
+    if request.method in UNSAFE_METHODS:
+        require_session_csrf(request, token)
     return user
 
 
-@router.post("/login", response_model=UserResponse)
-def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    secret = jwt_secret()
-    user = db.scalar(select(User).where(User.email == data.email))
-    valid, updated_hash = password_hash.verify_and_update(
-        data.password, user.password_hash if user else DUMMY_HASH,
-    )
-    if not valid or user is None or not user.is_active:
-        raise HTTPException(401, "Invalid email or password")
-    if updated_hash:
-        user.password_hash = updated_hash
+class RegistrationResponse(BaseModel):
+    message: str = "Registration request accepted. Sign in with your email and password."
+
+
+@router.post("/register", response_model=RegistrationResponse, status_code=202, dependencies=[Depends(require_login_csrf)])
+def register(data: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    jwt_secret()
+    registration_admission(db, request, str(data.email))
+    encoded = password_hash.hash(data.password)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        dialect = db.get_bind().dialect.name
+        if dialect not in ("postgresql", "sqlite"):
+            raise HTTPException(503, "Authentication unavailable")
+        insert = pg_insert if dialect == "postgresql" else sqlite_insert
+        db.execute(insert(User).values(email=str(data.email), password_hash=encoded).on_conflict_do_nothing(
+            index_elements=[User.email],
+        ))
         db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(503, "Authentication unavailable") from None
+    return RegistrationResponse()
+
+
+@router.post("/login", response_model=UserResponse, dependencies=[Depends(require_login_csrf)])
+def login(data: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    secret = jwt_secret()
+    pair_key = login_admission(db, request, str(data.email))
+    try:
+        user = db.scalar(select(User).where(User.email == data.email))
+        encoded = user.password_hash if user else DUMMY_HASH
+        user_id = user.id if user else None
+        active = user.is_active if user else False
+        db.rollback()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(503, "Authentication unavailable", headers={"Cache-Control": "no-store"}) from None
+    try:
+        valid, updated_hash = password_hash.verify_and_update(data.password, encoded)
+    except UnknownHashError:
+        password_hash.verify_and_update(data.password, DUMMY_HASH)
+        valid, updated_hash = False, None
+    if not valid or user_id is None or not active:
+        raise HTTPException(401, "Invalid email or password", headers={"Cache-Control": "no-store"})
+    try:
+        user = db.get(User, user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(401, "Invalid email or password", headers={"Cache-Control": "no-store"})
+        if updated_hash:
+            user.password_hash = updated_hash
+            db.commit()
+        refund_successful_login(db, pair_key)
         db.refresh(user)
+        result = UserResponse.model_validate(user)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(503, "Authentication unavailable", headers={"Cache-Control": "no-store"}) from None
     set_auth_cookie(response, user.id, secret)
-    return user
+    return result
 
 
 @router.get("/me", response_model=UserResponse)
@@ -160,7 +175,7 @@ def me(user: User = Depends(get_current_user)):
 
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(response: Response, user: User = Depends(get_current_user)):
     response.delete_cookie(
         COOKIE_NAME,
         path="/",
@@ -169,4 +184,43 @@ def logout(response: Response):
         samesite="lax",
     )
     response.headers["Cache-Control"] = "no-store"
+    clear_context(response)
     return {"message": "Logged out"}
+
+
+@router.get("/csrf")
+def csrf_bootstrap(request: Request, response: Response, db: Session = Depends(get_db)):
+    jwt_secret()
+    require_trusted_origin(request, bootstrap=True)
+    if request.headers.get("X-CSRF-Request") != "1":
+        raise csrf_failure()
+    take_slot(db, "bootstrap-ip", rate_ip(request), BOOTSTRAP_LIMIT, BOOTSTRAP_WINDOW)
+    context, expiry = bootstrap_context(request, response)
+    session_token = None
+    session_scope = None
+    raw = request.cookies.get(COOKIE_NAME)
+    session_expiry = expiry
+    if raw:
+        try:
+            claims = decode_session(raw)
+        except HTTPException as error:
+            if error.status_code != 401:
+                raise
+        else:
+            try:
+                user = db.get(User, claims["sub"])
+            except SQLAlchemyError:
+                db.rollback()
+                raise HTTPException(503, "Authentication unavailable", headers={"Cache-Control": "no-store"}) from None
+            if user is not None and user.is_active:
+                session_expiry = int(claims["exp"])
+                session_token = issue_token("session", raw, until=session_expiry)
+                session_scope = hmac.new(security_key("csrf-ui-session"), raw.encode(), hashlib.sha256).hexdigest()
+    response.headers.update({"Cache-Control": "no-store, private", "Pragma": "no-cache", "Vary": "Origin, Cookie"})
+    anonymous = issue_token("anonymous", context, until=expiry)
+    tokens = [token for token in (anonymous, session_token) if token]
+    return {
+        "csrf_token": session_token, "auth_csrf_token": anonymous,
+        "session_scope": session_scope,
+        "expires_at": min(int(token.split(".")[2]) for token in tokens),
+    }

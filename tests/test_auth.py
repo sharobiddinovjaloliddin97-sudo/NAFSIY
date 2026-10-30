@@ -1,4 +1,5 @@
 import unittest
+import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -10,6 +11,8 @@ from sqlalchemy.pool import StaticPool
 
 from backend.api import auth
 from backend.db.auth_models import User
+from backend.db.auth_security_models import AuthRateLimit
+from security_client import SecurityClient
 from backend.db.database import get_db
 from backend.main import app
 
@@ -20,6 +23,7 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
             "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool,
         )
         User.__table__.create(self.engine)
+        AuthRateLimit.__table__.create(self.engine)
 
         def local_db():
             with Session(self.engine) as session:
@@ -31,7 +35,7 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         self.cookie_patch = patch.object(auth.settings, "AUTH_COOKIE_SECURE", False)
         self.key_patch.start()
         self.cookie_patch.start()
-        self.client = httpx.AsyncClient(
+        self.client = SecurityClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test",
         )
         self.credentials = {"email": "Alice@Example.com", "password": "Testing password 123!"}
@@ -46,10 +50,17 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
     async def register(self):
         return await self.client.post("/api/v1/auth/register", json=self.credentials)
 
+    async def login(self):
+        return await self.client.post("/api/v1/auth/login", json=self.credentials)
+
     async def test_register_login_me_logout(self):
         self.assertEqual((await self.client.get("/api/v1/auth/me")).status_code, 401)
         response = await self.register()
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 202)
+        self.assertNotIn("id", response.json())
+        self.assertEqual((await self.client.get("/api/v1/auth/me")).status_code, 401)
+        response = await self.login()
+        self.assertEqual(response.status_code, 200)
         user = response.json()
         self.assertEqual(user["email"], "alice@example.com")
         self.assertEqual(len(user["id"]), 32)
@@ -81,7 +92,7 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         duplicate = await self.client.post("/api/v1/auth/register", json={
             **self.credentials, "email": "ALICE@example.com",
         })
-        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(duplicate.status_code, 202)
         errors = []
         for data in [
             {**self.credentials, "password": "Wrong password"},
@@ -108,10 +119,11 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_and_expired_tokens(self):
         registered = await self.register()
+        registered = await self.login()
         user_id = registered.json()["id"]
         now = datetime.now(timezone.utc)
         claims = {"sub": user_id, "iat": now, "exp": now + timedelta(hours=1),
-                  "iss": auth.JWT_ISSUER, "aud": auth.JWT_AUDIENCE}
+                  "iss": auth.JWT_ISSUER, "aud": auth.JWT_AUDIENCE, "jti": uuid.uuid4().hex}
         tokens = [
             "invalid-token",
             jwt.encode({**claims, "exp": now - timedelta(seconds=1)}, self.secret, algorithm="HS256"),
@@ -131,6 +143,7 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_inactive_user(self):
         response = await self.register()
+        response = await self.login()
         with Session(self.engine) as session:
             user = session.get(User, response.json()["id"])
             user.is_active = False
@@ -155,13 +168,17 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post("/api/v1/auth/register", json=self.credentials, headers={
             "Origin": "http://localhost:3000",
         })
-        self.assertEqual(response.status_code, 201)
-        response = await self.client.post("/api/v1/auth/logout", headers={"Origin": "http://test"})
+        self.assertEqual(response.status_code, 202)
+        await self.login()
+        response = await self.client.post("/api/v1/auth/logout", headers={"Origin": "http://localhost:8000"})
         self.assertEqual(response.status_code, 200)
 
     async def test_secure_cookie_and_unconfigured_secret(self):
         with patch.object(auth.settings, "AUTH_COOKIE_SECURE", True):
+            self.client.base_url = "https://test"
             response = await self.register()
+            response = await self.login()
+            self.client.base_url = "http://test"
         self.assertIn("Secure", response.headers["set-cookie"])
         with patch.object(auth.settings, "JWT_SECRET_KEY", ""):
             response = await self.client.post("/api/v1/auth/register", json={

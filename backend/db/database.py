@@ -1,9 +1,13 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.engine import make_url
 
 from backend.core.config import settings
 
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+engine_options = {"pool_timeout": 5, "connect_args": {"connect_timeout": 10}} if (
+    make_url(settings.DATABASE_URL).get_backend_name() == "postgresql"
+) else {}
+engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True, **engine_options)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 

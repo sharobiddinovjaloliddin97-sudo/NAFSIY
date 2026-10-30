@@ -1,4 +1,5 @@
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -12,22 +13,35 @@ from backend.api.hadith import router as hadith_router
 from backend.api.ai import router as ai_router
 from backend.api.auth import router as auth_router
 from backend.api.user_data import router as user_data_router
-from backend.db.database import Base, engine
+from backend.db.database import engine
 from backend.db import models
 from backend.db import auth_models
 from backend.db import user_data_models
 from backend.db import ai_models
+from backend.db import idempotency_models
+from backend.db import lease_models
+from backend.db import auth_security_models
+from backend.core.auth_maintenance import cleanup_loop
+from backend.ai.generation import settle
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    yield
+    task = asyncio.create_task(cleanup_loop(getattr(app.state, "auth_maintenance_engine", engine)))
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await settle(task)
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(
     title="NAFSIY API",
     description="Intelligent Islamic Companion",
     version="0.3.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -35,7 +49,8 @@ app.add_middleware(
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Idempotency-Key", "X-CSRF-Token", "X-CSRF-Request"],
+    expose_headers=["Retry-After"],
 )
 
 app.include_router(quran_router)

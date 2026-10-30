@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChatSessions } from "@/hooks/useChatSessions";
+import { CsrfError, csrfHeaders, csrfRejected } from "@/lib/csrf";
 import QuranReader from "@/components/QuranReader";
 import HadithReader from "@/components/HadithReader";
 import AuthPanel from "@/components/AuthPanel";
@@ -63,6 +64,11 @@ export default function Home() {
   const [sessionBusy, setSessionBusy] = useState(false);
   const aiRequest = useRef<AbortController | null>(null);
   const sendVersion = useRef(0);
+  const pendingRequestRef = useRef<{
+    sessionId: string;
+    message: string;
+    key: string;
+  } | null>(null);
 
   const [city, setCity] = useState("Tashkent");
   const [prayer, setPrayer] = useState<PrayerTimes | null>(null);
@@ -78,6 +84,8 @@ export default function Home() {
     const changed = () => {
       sendVersion.current++;
       aiRequest.current?.abort();
+      aiRequest.current = null;
+      pendingRequestRef.current = null;
       setSending(false);
       setSessionBusy(false);
       setInput("");
@@ -130,7 +138,7 @@ export default function Home() {
 
   async function sendMessage(text = input) {
     const question = text.trim();
-    if (!question || sending || sessionBusy || !loaded || loadError) return;
+    if (!question || sending || aiRequest.current || sessionBusy || !loaded || loadError) return;
     if (!authenticated) {
       window.dispatchEvent(new Event("nafsiy-open-auth"));
       return;
@@ -150,12 +158,18 @@ export default function Home() {
     try {
       const sessionId = activeId || await createSession(context);
       if (!isCurrentContext(context)) return;
+      const pending = pendingRequestRef.current;
+      const requestKey = pending && pending.sessionId === sessionId && pending.message === question
+        ? pending.key : crypto.randomUUID();
+      pendingRequestRef.current = { sessionId, message: question, key: requestKey };
+      const securityHeaders = await csrfHeaders(false, controller.signal);
+      if (!isCurrentContext(context)) return;
       requestStarted = true;
       const response = await fetch(`${API}/api/v1/ai/chats/${encodeURIComponent(sessionId)}/send`, {
         method: "POST",
         credentials: "include",
         signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": requestKey, ...securityHeaders },
         body: JSON.stringify({ message: question })
       });
 
@@ -163,28 +177,44 @@ export default function Home() {
 
       if (!response.ok) {
         knownFailure = true;
+        if (csrfRejected(response.status, data.detail)) {
+          throw new Error("Xavfsizlik tokeni yangilanishi kerak. Shu savolni qayta yuboring");
+        }
         if (response.status === 401) {
           window.dispatchEvent(new Event("nafsiy-auth-changed"));
           window.dispatchEvent(new Event("nafsiy-open-auth"));
         }
         throw new Error(
-          typeof data.detail === "string"
+          response.status === 409 && data.detail === "Request is already processing"
+            ? "Oldingi so‘rov hali bajarilmoqda. Biroz kutib, shu savolni qayta yuboring."
+            : response.status === 409 && data.detail === "Chat is busy; retry later"
+            ? "Bu suhbatda javob tayyorlanmoqda. Biroz kutib, savolingizni qayta yuboring."
+            : typeof data.detail === "string"
             ? data.detail
             : "AI javob bera olmadi"
         );
       }
 
       if (!isCurrentContext(context)) return;
-      await reload();
+      const reloaded = await reload();
+      if (reloaded && version === sendVersion.current && pendingRequestRef.current?.key === requestKey) {
+        pendingRequestRef.current = null;
+      }
     } catch (err) {
+      if (err instanceof CsrfError && err.status === 401) {
+        window.dispatchEvent(new Event("nafsiy-open-auth"));
+      }
       if (isCurrentContext(context)) {
         setInput(question);
         setError(knownFailure || !requestStarted
           ? err instanceof Error ? err.message : "AI bilan aloqa xatosi"
-          : "So‘rov yakunini tasdiqlab bo‘lmadi. Xabar saqlangan bo‘lishi mumkin. Qayta yuborishdan oldin suhbatni yangilang.");
+          : "Javob kelganini tasdiqlab bo‘lmadi. Suhbatni yangilang yoki shu savolni qayta yuboring.");
       }
     } finally {
-      if (version === sendVersion.current) setSending(false);
+      if (version === sendVersion.current) {
+        aiRequest.current = null;
+        setSending(false);
+      }
     }
   }
 

@@ -9,6 +9,8 @@ from sqlalchemy.pool import StaticPool
 
 from backend.api import auth, user_data
 from backend.db.auth_models import User
+from backend.db.auth_security_models import AuthRateLimit
+from security_client import SecurityClient
 from backend.db.database import get_db
 from backend.db.user_data_models import Bookmark, ChatMessage, ChatSession
 from backend.main import app
@@ -22,7 +24,7 @@ class UserDataTests(unittest.IsolatedAsyncioTestCase):
         def foreign_keys(connection, _):
             connection.execute("PRAGMA foreign_keys=ON")
 
-        for table in (User.__table__, ChatSession.__table__, ChatMessage.__table__, Bookmark.__table__):
+        for table in (User.__table__, ChatSession.__table__, ChatMessage.__table__, Bookmark.__table__, AuthRateLimit.__table__):
             table.create(self.engine)
 
         def local_db():
@@ -34,12 +36,14 @@ class UserDataTests(unittest.IsolatedAsyncioTestCase):
         self.cookie_patch = patch.object(auth.settings, "AUTH_COOKIE_SECURE", False)
         self.secret_patch.start()
         self.cookie_patch.start()
-        self.a = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-        self.b = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-        self.guest = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        self.a = SecurityClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        self.b = SecurityClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        self.guest = SecurityClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         for client, email in ((self.a, "alice@example.com"), (self.b, "bob@example.com")):
             response = await client.post("/api/v1/auth/register", json={"email": email, "password": "Testing password123!"})
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 202)
+            response = await client.post("/api/v1/auth/login", json={"email": email, "password": "Testing password123!"})
+            self.assertEqual(response.status_code, 200)
 
     async def asyncTearDown(self):
         for client in (self.a, self.b, self.guest):

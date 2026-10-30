@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { CsrfError, csrfHeaders, csrfRejected } from "@/lib/csrf";
 import {
   UserRound,
   LogIn,
@@ -41,6 +42,15 @@ async function authRequest(
 ): Promise<unknown> {
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
+  if (!["GET", "HEAD", "OPTIONS"].includes((options.method || "GET").toUpperCase())) {
+    try {
+      const security = await csrfHeaders(path === "/login" || path === "/register", options.signal ?? undefined);
+      for (const [name, value] of Object.entries(security)) headers.set(name, value);
+    } catch (error) {
+      if (error instanceof CsrfError) throw new AuthRequestError(error.status, error.message);
+      throw error;
+    }
+  }
   const response = await fetch(
     `${API}/api/v1/auth${path}`,
     {
@@ -57,10 +67,14 @@ async function authRequest(
   const data: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
+    const detail = data && typeof data === "object" && "detail" in data ? data.detail : null;
+    if (csrfRejected(response.status, detail)) {
+      throw new AuthRequestError(403, "Xavfsizlik tokeni yangilanishi kerak. Qayta urinib ko‘ring");
+    }
     const messages: Record<number, string> = {
       401: "Email yoki parol noto‘g‘ri",
       403: "Bu so‘rovga ruxsat berilmadi",
-      409: "Bu email bilan akkaunt allaqachon yaratilgan",
+      409: "Sessiya o‘zgardi. Qayta urinib ko‘ring",
       422: "Email va parolni tekshiring",
       429: "Juda ko‘p urinish. Birozdan keyin qayta urinib ko‘ring",
     };
@@ -83,6 +97,7 @@ export default function AuthPanel() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const modalRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const requestRef = useRef<AbortController | null>(null);
@@ -165,6 +180,7 @@ export default function AuthPanel() {
     setOpen(false);
     setPassword("");
     setError("");
+    setNotice("");
   }
 
   function handleDialogKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -213,6 +229,12 @@ export default function AuthPanel() {
       );
 
       if (controller.signal.aborted) return;
+      if (mode === "register") {
+        setMode("login");
+        setPassword("");
+        setNotice("So‘rov qabul qilindi. Email va parolingiz bilan tizimga kiring.");
+        return;
+      }
       setUser(readUser(data));
       notifyAuthChanged();
       setPassword("");
@@ -342,6 +364,7 @@ export default function AuthPanel() {
                 </p>
 
                 <form onSubmit={submit}>
+                  {notice && <p className="auth-notice auth-subtitle" role="status">{notice}</p>}
                   <label>
                     Email
                     <input
@@ -413,6 +436,7 @@ export default function AuthPanel() {
                         : "login"
                     );
                     setError("");
+                    setNotice("");
                     setPassword("");
                   }}
                 >

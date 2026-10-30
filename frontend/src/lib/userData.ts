@@ -1,3 +1,5 @@
+import { CsrfError, csrfHeaders, csrfRejected } from "@/lib/csrf";
+
 export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export class UserDataError extends Error {
@@ -9,6 +11,14 @@ export class UserDataError extends Error {
 export async function accountRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body) headers.set("Content-Type", "application/json");
+  if (!["GET", "HEAD", "OPTIONS"].includes((options.method || "GET").toUpperCase())) {
+    try {
+      for (const [name, value] of Object.entries(await csrfHeaders(false, options.signal ?? undefined))) headers.set(name, value);
+    } catch (error) {
+      if (error instanceof CsrfError) throw new UserDataError(error.status, error.message);
+      throw error;
+    }
+  }
   const response = await fetch(`${API}/api/v1${path}`, {
     ...options, credentials: "include", cache: "no-store", headers,
     signal: options.signal
@@ -23,6 +33,9 @@ export async function accountRequest<T>(path: string, options: RequestInit = {})
     }
     const detail = data && typeof data === "object" && "detail" in data &&
       typeof data.detail === "string" ? data.detail : "Ma’lumotni saqlab bo‘lmadi";
+    if (csrfRejected(response.status, detail)) {
+      throw new UserDataError(403, "Xavfsizlik tokeni yangilanishi kerak. So‘rovni qayta yuboring");
+    }
     throw new UserDataError(response.status, response.status >= 500
       ? "Bulut xizmati vaqtincha mavjud emas. Qayta urinib ko‘ring" : detail);
   }

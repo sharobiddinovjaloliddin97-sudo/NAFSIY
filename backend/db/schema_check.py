@@ -9,6 +9,9 @@ from backend.db import (
     auth_models,
     user_data_models,
     ai_models,
+    idempotency_models,
+    lease_models,
+    auth_security_models,
 )
 
 
@@ -56,6 +59,7 @@ def main():
             print("\nPASS: Schema matches models")
         else:
             print("\nREVIEW REQUIRED: Schema differences found")
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

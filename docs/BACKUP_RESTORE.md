@@ -68,7 +68,9 @@ Bu namuna; haqiqiy qiymat yangi loyihadan olinadi. URL’ni Git yoki hujjatlarga
 
 ## Chegaralar
 
-Restore’dan keyin manba test branch’ga `.env` ichidagi `TEST_DATABASE_URL` bilan qayta ulanish `password authentication failed` xatosini qaytardi. Shu sabab manbaning hozirgi sonlari qayta olinmadi. Tiklangan sonlar va revision backup bilan bir snapshot’da olingan manifestga solishtirildi va mos chiqdi. Manba test branch’dan yana foydalanish uchun uning amaldagi connection ma’lumotlari bilan `TEST_DATABASE_URL` yangilanishi kerak.
+V0.9.3 restore sinovidan keyin manba test branch’ga `TEST_DATABASE_URL` bilan qayta ulanish parol xatosini qaytargan edi. O‘sha sinovda tiklangan sonlar va revision backup bilan bir snapshot’da olingan manifestga solishtirildi va mos chiqdi. V0.9.4.1 ishida foydalanuvchi test URL’ni yangiladi va ulanish qayta tekshirildi: ishlaydi.
+
+V0.9.4.1’da faqat migration test branch yangi `7bbcad9d4644` revision’ga o‘tkazildi va `ai_idempotency` qo‘shildi. Ushbu hujjatdagi dump va restore natijalari avvalgi `69e1d999085f` holatiga tegishli: backup hamon 9 ta jadvaldan iborat. Yangi jadval eski backup ichiga qo‘shilmagan. Joriy migration va cheklovlar [IDEMPOTENCY.md](IDEMPOTENCY.md) ichida.
 
 Bo‘sh baseline migration mavjud sxemani Alembic nazoratiga oladi; u bo‘sh database’ni noldan yaratmaydi. Fresh-install migration strategiyasi alohida ish bo‘lib qoladi.
 

@@ -12,7 +12,7 @@ if (-not (Test-Path -LiteralPath $pythonPath)) {
 
 Push-Location $PSScriptRoot
 try {
-    & $pythonPath -m uvicorn backend.main:app --host 127.0.0.1 --port $Port --reload --reload-dir $backendPath
+    & $pythonPath -m uvicorn backend.main:app --host 127.0.0.1 --port $Port --reload --reload-dir $backendPath --no-proxy-headers
 }
 finally {
     Pop-Location

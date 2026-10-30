@@ -70,20 +70,22 @@ export function useChatSessions() {
     commit(INITIAL);
     try {
       const user = await currentAccount(request.signal);
-      if (version !== generation.current) return;
+      if (version !== generation.current) return false;
       if (!user) {
         const guest = guestSession();
         commit({ ...INITIAL, loaded: true, sessions: [guest], activeId: guest.id });
-        return;
+        return true;
       }
       const data = await userRequest<unknown>("/chats", { signal: request.signal });
-      if (version !== generation.current) return;
+      if (version !== generation.current) return false;
       if (!Array.isArray(data)) throw new Error("Suhbatlar javobi noto‘g‘ri");
       const chats = data.map(readChat);
       commit({ ...INITIAL, loaded: true, authenticated: true, sessions: chats, activeId: chats[0]?.id || "" });
+      return true;
     } catch (error) {
-      if (version !== generation.current || request.signal.aborted) return;
+      if (version !== generation.current || request.signal.aborted) return false;
       commit({ ...INITIAL, loaded: true, loadError: error instanceof Error ? error.message : "Suhbatlar yuklanmadi" });
+      return false;
     }
   }, [commit]);
 

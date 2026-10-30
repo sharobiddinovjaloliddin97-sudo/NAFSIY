@@ -12,7 +12,7 @@ MAX_AI_REQUESTS = 5
 WINDOW_SECONDS = 60
 
 
-def check_ai_rate_limit(db: Session, user_id: str):
+def check_ai_rate_limit(db: Session, user_id: str, *, commit: bool = True):
     now = int(time.time())
     window = now // WINDOW_SECONDS
     dialect = db.get_bind().dialect.name
@@ -29,7 +29,8 @@ def check_ai_rate_limit(db: Session, user_id: str):
         where=AIRateLimit.count < MAX_AI_REQUESTS,
     ).returning(AIRateLimit.count)
     count = db.execute(statement).scalar_one_or_none()
-    db.commit()
+    if commit:
+        db.commit()
     if count is None:
         raise HTTPException(
             429, "AI request limit reached: 5 requests per minute",

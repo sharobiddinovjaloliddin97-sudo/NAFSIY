@@ -1,24 +1,28 @@
+import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from backend.ai.agent import ask_nafsiy
+from backend.ai.generation import database_call, generate_with_lease, session_call, settle
 from backend.api.auth import get_current_user, require_trusted_origin
 from backend.api.user_data import MAX_MESSAGES
-from backend.core.rate_limit import check_ai_rate_limit
+from backend.core.idempotency import complete_request, release_failed_request, reserve_request
+from backend.core.leases import GenerationLease, fence_lease, release_lease, transaction_timeouts
 from backend.db.auth_models import User
 from backend.db.database import get_db
 from backend.db.user_data_models import ChatMessage, ChatSession
 
 
 router = APIRouter(prefix="/api/v1/ai", tags=["NAFSIY AI"])
+logger = logging.getLogger(__name__)
 
 
 class SendRequest(BaseModel):
@@ -47,35 +51,46 @@ class ChatResponse(BaseModel):
     model: str
 
 
-def prepare_turn(db: Session, user_id: str, session_id: str) -> list[dict]:
+def reserve_turn(db: Session, user_id: str, session_id: str, key: str, question: str) -> dict:
     try:
+        transaction_timeouts(db)
         chat_id = db.scalar(select(ChatSession.id).where(
             ChatSession.id == session_id, ChatSession.user_id == user_id,
-        ))
+        ).with_for_update())
         if chat_id is None:
             raise HTTPException(404, "Chat not found")
-        check_ai_rate_limit(db, user_id)
+        reserved = reserve_request(db, user_id, session_id, key, question)
+        if reserved["state"] == "replay":
+            db.rollback()
+            return reserved
         rows = db.execute(select(ChatMessage.role, ChatMessage.content)
                           .where(ChatMessage.session_id == session_id)
                           .order_by(ChatMessage.position.desc()).limit(12)).all()
-        history = [{"role": row.role, "content": row.content[:4000]} for row in reversed(rows)]
+        reserved["history"] = [{"role": row.role, "content": row.content[:4000]} for row in reversed(rows)]
+        db.commit()
+        return reserved
+    except SQLAlchemyError as error:
         db.rollback()
-        return history
-    except SQLAlchemyError:
-        db.rollback()
+        if getattr(getattr(error, "orig", None), "sqlstate", None) == "55P03":
+            raise HTTPException(409, "Chat is busy; retry later", headers={"Retry-After": "1"}) from None
         raise HTTPException(503, "AI chat database unavailable") from None
     except HTTPException:
         db.rollback()
         raise
 
 
-def save_turn(db: Session, user_id: str, session_id: str, question: str, result: ChatResponse):
+def save_turn(
+    db: Session, user_id: str, session_id: str, question: str,
+    result: ChatResponse, lease: GenerationLease,
+):
     try:
+        transaction_timeouts(db)
         chat = db.scalar(select(ChatSession).where(
             ChatSession.id == session_id, ChatSession.user_id == user_id,
         ).with_for_update())
         if chat is None:
             raise HTTPException(404, "Chat not found")
+        fence_lease(db, lease)
         position = db.scalar(select(func.max(ChatMessage.position)).where(ChatMessage.session_id == session_id)) or 0
         first_user = db.scalar(select(ChatMessage.id).where(
             ChatMessage.session_id == session_id, ChatMessage.role == "user",
@@ -94,6 +109,8 @@ def save_turn(db: Session, user_id: str, session_id: str, question: str, result:
                               .order_by(ChatMessage.position.desc()).offset(MAX_MESSAGES)).all()
         for message in overflow:
             db.delete(message)
+        complete_request(db, lease, result.model_dump())
+        release_lease(db, lease)
         db.commit()
     except SQLAlchemyError:
         db.rollback()
@@ -108,16 +125,42 @@ async def send_message(
     session_id: str,
     request: SendRequest,
     http_request: Request,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     require_trusted_origin(http_request)
     user_id = user.id
-    history = await run_in_threadpool(prepare_turn, db, user_id, session_id)
-    generated = await ask_nafsiy(question=request.message, history=history)
+    bind = db.get_bind()
+    await database_call(db.rollback)
+
+    def cleanup(reserved):
+        if reserved["state"] == "reserved":
+            session_call(bind, release_failed_request, reserved["lease"])
+
+    reserved = await database_call(
+        session_call, bind, reserve_turn, user_id, session_id, idempotency_key, request.message,
+        on_cancel=cleanup,
+    )
+    if reserved["state"] == "replay":
+        try:
+            return ChatResponse.model_validate(reserved["response"])
+        except ValidationError:
+            raise HTTPException(503, "Saved AI response is unavailable") from None
+    lease = reserved["lease"]
     try:
-        result = ChatResponse.model_validate(generated)
-    except ValidationError:
-        raise HTTPException(502, "AI returned an invalid answer") from None
-    await run_in_threadpool(save_turn, db, user_id, session_id, request.message, result)
-    return result
+        generated = await generate_with_lease(
+            bind, lease, ask_nafsiy, question=request.message, history=reserved["history"],
+        )
+        try:
+            result = ChatResponse.model_validate(generated)
+        except ValidationError:
+            raise HTTPException(502, "AI returned an invalid answer") from None
+        await database_call(session_call, bind, save_turn, user_id, session_id, request.message, result, lease)
+        return result
+    except BaseException:
+        try:
+            await settle(asyncio.create_task(database_call(session_call, bind, release_failed_request, lease)))
+        except Exception as error:
+            logger.error("Failed AI request cleanup: %s", type(error).__name__)
+        raise
