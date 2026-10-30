@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from backend.db.idempotency_models import AIIdempotency
 from backend.db.user_data_models import ChatSession
 from backend.core.leases import GenerationLease, acquire_lease, clock, release_lease, transaction_timeouts
-from backend.core.rate_limit import check_ai_rate_limit
+from backend.core.config import settings
 
 
 def fingerprint(message: str) -> str:
@@ -34,9 +34,14 @@ def reserve_request(
             raise HTTPException(409, "Idempotency-Key was already used for a different message")
         if row.status == "completed":
             try:
-                return {"state": "replay", "response": json.loads(row.response_json)}
+                response = json.loads(row.response_json)
+                if response == {"expired": True}:
+                    raise HTTPException(410, "AI retry window expired; use a new request")
+                return {"state": "replay", "response": response}
             except (TypeError, ValueError):
                 raise HTTPException(503, "Saved AI response is unavailable") from None
+        if row.provider_attempts >= settings.AI_MAX_PROVIDER_ATTEMPTS:
+            raise HTTPException(429, "AI provider attempt limit reached; use a new request", headers={"Retry-After": "60"})
     request_id = row.id if row is not None else uuid.uuid4().hex
     lease = acquire_lease(db, session_id, request_id, same_request=row is not None)
     if row is None:
@@ -49,12 +54,11 @@ def reserve_request(
         ).returning(AIIdempotency.id)).scalar_one_or_none()
         if inserted is None:
             raise HTTPException(409, "Request state changed; retry with the same Idempotency-Key", headers={"Retry-After": "1"})
-    if row is None or not row.rate_charged:
-        check_ai_rate_limit(db, user_id, commit=False)
+    charge_rate = row is None or not row.rate_charged
     db.execute(update(AIIdempotency).where(AIIdempotency.id == request_id).values(
         lease_owner=lease.owner_id, lease_version=lease.version, rate_charged=True, updated_at=clock(db),
     ))
-    return {"state": "reserved", "id": request_id, "lease": lease}
+    return {"state": "reserved", "id": request_id, "lease": lease, "charge_rate": charge_rate}
 
 
 def complete_request(db: Session, lease: GenerationLease, response: dict):
@@ -70,7 +74,9 @@ def complete_request(db: Session, lease: GenerationLease, response: dict):
 
 
 def release_failed_request(db: Session, lease: GenerationLease):
+    from backend.core.ai_operations import release
     transaction_timeouts(db)
     db.scalar(select(ChatSession.id).where(ChatSession.id == lease.session_id).with_for_update())
     release_lease(db, lease)
+    release(db, lease, "failed")
     db.commit()

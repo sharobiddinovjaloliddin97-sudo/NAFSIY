@@ -12,6 +12,7 @@ from backend.db import (
     idempotency_models,
     lease_models,
     auth_security_models,
+    operations_models,
 )
 
 

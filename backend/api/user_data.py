@@ -4,15 +4,16 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.api.auth import get_current_user, require_trusted_origin
 from backend.db.auth_models import User
 from backend.db.database import get_db
 from backend.db.user_data_models import Bookmark, ChatMessage, ChatSession
+from backend.core.config import settings
 
 
 MAX_SESSIONS = 50
@@ -34,11 +35,7 @@ class ChatCreate(BaseModel):
         return value.strip()
 
 
-class SourceInfo(BaseModel):
-    type: Literal["quran", "hadith"]
-    reference: str = Field(min_length=1, max_length=200)
-    provider: str = Field(min_length=1, max_length=120)
-    verified: Literal[False] = False
+from backend.ai.source_metadata import SourceInfo
 
 
 class StoredMessage(BaseModel):
@@ -112,6 +109,42 @@ def owned_chat(db: Session, user: User, chat_id: str, lock=False) -> ChatSession
     if chat is None:
         raise HTTPException(404, "Chat not found")
     return chat
+
+
+class AccountDelete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmation: Literal["DELETE MY ACCOUNT"]
+    password: str = Field(min_length=1, max_length=128)
+
+
+@router.delete("/account", status_code=204)
+def delete_account(data: AccountDelete, response: Response, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from backend.api.auth import password_hash, COOKIE_NAME
+    from backend.core.account_deletion import delete_account_data
+    from backend.core.auth_rate_limit import take_slot
+    from backend.core.csrf import clear_context
+    from pwdlib.exceptions import UnknownHashError
+    if not settings.ACCOUNT_DELETION_ENABLED:
+        raise HTTPException(503, "Account deletion is not enabled")
+    user_id, encoded = user.id, user.password_hash
+    db.rollback()
+    take_slot(db, "account-delete", user_id, 3, 300)
+    try:
+        valid = password_hash.verify(data.password, encoded)
+    except UnknownHashError:
+        valid = False
+    if not valid:
+        raise HTTPException(401, "Reauthentication failed")
+    try:
+        delete_account_data(db, user_id, expected_password_hash=encoded)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(503, "Account deletion unavailable; retry later") from None
+    response.delete_cookie(COOKIE_NAME, path="/", httponly=True, secure=settings.AUTH_COOKIE_SECURE, samesite="lax")
+    clear_context(response)
+    response.headers["Cache-Control"] = "no-store"
+    response.status_code = 204
+    return response
 
 
 @router.get("/chats", response_model=list[ChatResponse])

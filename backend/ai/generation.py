@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from backend.core import leases
+from backend.core import ai_operations
 
 
 GENERATION_TIMEOUT_SECONDS = 120
@@ -48,7 +49,14 @@ async def database_call(function, *args, on_cancel=None):
 async def heartbeat(bind, lease):
     while True:
         await asyncio.sleep(leases.RENEW_INTERVAL_SECONDS)
-        await database_call(session_call, bind, leases.renew_lease, lease)
+        await database_call(session_call, bind, renew_generation, lease)
+
+
+def renew_generation(db, lease):
+    leases.transaction_timeouts(db)
+    leases.renew_lease(db, lease)
+    ai_operations.renew(db, lease)
+    db.commit()
 
 
 def consume_result(task):
@@ -57,7 +65,7 @@ def consume_result(task):
 
 
 async def generate_with_lease(bind, lease, generate, *, question, history):
-    await database_call(session_call, bind, leases.renew_lease, lease)
+    await database_call(session_call, bind, renew_generation, lease)
     model = asyncio.create_task(generate(question=question, history=history))
     renewal = asyncio.create_task(heartbeat(bind, lease))
     try:

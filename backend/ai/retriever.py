@@ -4,6 +4,8 @@ from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from backend.ai.references import quran_reference
+from backend.ai.source_registry import REGISTRY, arabic_edition, content_digest, permitted, translation_editions
 
 
 QURAN_API = "https://api.alquran.cloud/v1"
@@ -17,15 +19,6 @@ MAX_RESULTS_PER_QUERY = 3
 MAX_TEXT_LENGTH = 6000
 
 
-def quran_reference(value):
-    if not isinstance(value, str):
-        return None
-    match = re.fullmatch(r"([1-9]\d{0,2}):([1-9]\d{0,2})", value.strip())
-    if not match or int(match[1]) > 114 or int(match[2]) > 286:
-        return None
-    return f"{int(match[1])}:{int(match[2])}"
-
-
 def hadith_reference(value):
     if not isinstance(value, str):
         return None
@@ -37,7 +30,7 @@ def hadith_reference(value):
 
 
 class SearchPlan(BaseModel):
-    language: str = Field(pattern=r"^(uz|ru|en)$")
+    language: str = Field(pattern=r"^(ar|uz|ru|en)$")
     quran_queries: list[str] = Field(default_factory=list, max_length=3)
     hadith_queries: list[str] = Field(default_factory=list, max_length=3)
     quran_references: list[str] = Field(default_factory=list, max_length=3)
@@ -78,18 +71,39 @@ def data_of(value):
 
 
 def text_of(value):
-    return value.strip() if isinstance(value, str) else ""
+    return value if isinstance(value, str) and value.strip() else ""
 
 
-def source(kind, reference, provider, arabic="", translation="", grade=""):
+def source(kind, reference, provider, arabic="", translation="", grade="", *, edition=None):
     original, translated = text_of(arabic), text_of(translation)
-    return {
+    record = {
         "type": kind, "reference": reference, "provider": provider, "verified": False,
         "arabic": original[:MAX_TEXT_LENGTH], "translation": translated[:MAX_TEXT_LENGTH],
         "translation_language": "en" if translated else "", "grade": text_of(grade)[:200],
-        "translation_edition": "en.sahih" if kind == "quran" and translated else "",
+        "translation_edition": (edition or "en.itani") if kind == "quran" and translated else "",
+        "arabic_edition": arabic_edition() if kind == "quran" and original else "",
+        "numbering_system": "hafs-kufan" if kind == "quran" else "ummahapi-provider-numbering-unspecified",
+        "verification_status": "reference_resolved" if kind == "quran" else "provider_reported",
+        "grading_status": "not_applicable" if kind == "quran" else "grading_not_verified",
+        "grade_authority": "", "metadata_conflicts": [],
         "truncated": len(original) > MAX_TEXT_LENGTH or len(translated) > MAX_TEXT_LENGTH,
     }
+    return identify(record)
+
+
+def identify(record):
+    edition = record.get("translation_edition") or record.get("arabic_edition") or "ummah-hadith"
+    entry = REGISTRY.get(edition)
+    record["registry_id"] = edition
+    record["license_state"] = entry.license_state.value if entry else "permission_pending"
+    record["attribution"] = entry.attribution if entry else "UmmahAPI; edition not established"
+    arabic_entry = REGISTRY.get(record.get("arabic_edition"))
+    record["arabic_attribution"] = arabic_entry.attribution if arabic_entry else ""
+    record["translation_attribution"] = entry.attribution if entry and record.get("translation") else ""
+    record["license_url"] = entry.license_url if entry else ""
+    record["source_id"] = f"{record['provider']}:{edition}:{record['numbering_system']}:{record['reference']}"
+    record["content_sha256"] = content_digest(record)
+    return record
 
 
 async def fetch_data(client, semaphore, url, params=None):
@@ -117,8 +131,12 @@ def verse_reference(item):
 
 
 async def quran_exact(client, semaphore, reference):
+    if quran_reference(reference) != reference:
+        return []
+    arabic = arabic_edition()
+    editions = [arabic, *(entry.id for entry in translation_editions())]
     data = await fetch_data(client, semaphore,
-                            f"{QURAN_API}/ayah/{reference}/editions/quran-uthmani,en.sahih")
+                            f"{QURAN_API}/ayah/{reference}/editions/{','.join(editions)}")
     if not isinstance(data, list):
         return []
     texts = {}
@@ -127,17 +145,30 @@ async def quran_exact(client, semaphore, reference):
         if verse_reference(item) != reference or not isinstance(item.get("edition"), dict):
             continue
         edition = item["edition"].get("identifier")
-        if edition in {"quran-uthmani", "en.sahih"}:
-            texts[edition] = text_of(item.get("text"))
+        if edition in editions:
+            text = text_of(item.get("text"))
+            if edition in texts and texts[edition] != text:
+                return []  # Conflicting payloads cannot establish one canonical record.
+            texts[edition] = text
             names = {"surah_name": text_of(item["surah"].get("englishName"))[:120],
                      "surah_name_arabic": text_of(item["surah"].get("name"))[:120]}
     if not any(texts.values()):
         return []
-    return [{**source("quran", reference, "AlQuran Cloud", texts.get("quran-uthmani", ""), texts.get("en.sahih", "")), **names}]
+    translations = [entry for entry in translation_editions() if texts.get(entry.id)]
+    records = []
+    for entry in translations or [None]:
+        record = source("quran", reference, "AlQuran Cloud", texts.get(arabic, ""),
+                        texts.get(entry.id, "") if entry else "", edition=entry.id if entry else None)
+        record["translation_language"] = entry.language if entry else ""
+        records.append({**identify(record), **names})
+    return records
 
 
-async def quran_search(client, semaphore, query):
-    data = await fetch_data(client, semaphore, f"{QURAN_API}/search/{quote(query, safe='')}/all/en.sahih")
+async def quran_search(client, semaphore, query, edition="en.itani"):
+    if not permitted(edition):
+        return []
+    requested_edition = edition
+    data = await fetch_data(client, semaphore, f"{QURAN_API}/search/{quote(query, safe='')}/all/{edition}")
     if not isinstance(data, dict) or not isinstance(data.get("matches"), list):
         return []
     candidates = {}
@@ -146,13 +177,13 @@ async def quran_search(client, semaphore, query):
         if reference is None or not text_of(item.get("text")):
             continue
         edition = item.get("edition")
-        if isinstance(edition, dict) and edition.get("identifier") not in {None, "en.sahih"}:
+        if not isinstance(edition, dict) or edition.get("identifier") != requested_edition:
             continue
-        candidates.setdefault(reference, source("quran", reference, "AlQuran Cloud", translation=item["text"]))
+        candidates.setdefault(reference, source("quran", reference, "AlQuran Cloud", translation=item["text"], edition=edition["identifier"]))
         if len(candidates) == MAX_RESULTS_PER_QUERY:
             break
     results = await asyncio.gather(*(quran_exact(client, semaphore, reference) for reference in candidates))
-    return [enriched[0] if enriched else fallback for enriched, fallback in zip(results, candidates.values())]
+    return [record for enriched, fallback in zip(results, candidates.values()) for record in (enriched or [fallback])]
 
 
 def normalize_hadith(item, expected=None):
@@ -175,10 +206,35 @@ def normalize_hadith(item, expected=None):
                     if text_of(item.get(key))), "")
     if not arabic and not english:
         return None
-    return source("hadith", reference, "UmmahAPI", arabic, english, item.get("grade", ""))
+    record = source("hadith", reference, "UmmahAPI", arabic, english, item.get("grade", ""))
+    record["collection"] = collection
+    record["hadith_number"] = reference.split(":", 1)[1]
+    record["numbering_system"] = text_of(item.get("numbering_system"))[:120] or "ummahapi-provider-numbering-unspecified"
+    # The live adapter exposes a bare grade, no named grading authority/edition.
+    # Retain it as reported metadata, never authenticate it on the model's behalf.
+    record["grade_authority"] = text_of(item.get("grade_authority"))[:120]
+    identities = [hadith_reference(f"{collection}:{item[key]}") for key in
+                  ("hadithnumber", "hadith_number", "hadithNumber", "number") if item.get(key) is not None]
+    collections = {item[key] for key in ("collection", "collection_key") if isinstance(item.get(key), str)}
+    if len(set(identities)) > 1 or len(collections) > 1:
+        record["metadata_conflicts"].append("conflicting_identity")
+    if item.get("grades") and record["grade"]:
+        record["metadata_conflicts"].append("multiple_grading_metadata")
+    for label, fields in (("arabic", ("arabic", "hadith_arabic", "hadithArabic", "arabic_text")),
+                          ("translation", ("english", "hadith_english", "hadithEnglish", "english_text", "text"))):
+        if len({text_of(item.get(field)) for field in fields if text_of(item.get(field))}) > 1:
+            record["metadata_conflicts"].append("conflicting_" + label)
+    record["reported_grades"] = [{"grade": text_of(row.get("grade"))[:200],
+                                  "authority": text_of(row.get("name"))[:120]}
+                                 for row in (item.get("grades") or [])[:10] if isinstance(row, dict)] if isinstance(item.get("grades"), list) else []
+    if record["metadata_conflicts"]:
+        record["verification_status"] = "metadata_conflict"
+    return identify(record)
 
 
 async def hadith_exact(client, semaphore, reference):
+    if not permitted("ummah-hadith") or hadith_reference(reference) != reference:
+        return []
     collection, number = reference.split(":")
     data = await fetch_data(client, semaphore, f"{HADITH_API}/{collection}/{number}")
     record = normalize_hadith(data, expected=reference)
@@ -186,6 +242,8 @@ async def hadith_exact(client, semaphore, reference):
 
 
 async def hadith_search(client, semaphore, query):
+    if not permitted("ummah-hadith"):
+        return []
     data = await fetch_data(client, semaphore, f"{HADITH_API}/search", {"q": query, "limit": MAX_RESULTS_PER_QUERY})
     if isinstance(data, list):
         entries = data
@@ -232,13 +290,18 @@ async def retrieve_sources(plan: SearchPlan | dict):
     unique = {}
     for records in collected:
         for record in records:
-            key = (record["type"], record["reference"])
+            key = (record["type"], record["reference"], record.get("numbering_system"), record.get("translation_edition"))
             if key not in unique and len(unique) < MAX_SOURCES:
                 unique[key] = record
             elif key in unique:
+                conflicts = [field for field in ("arabic", "translation", "grade", "grade_authority")
+                             if unique[key].get(field) and record.get(field) and unique[key][field] != record[field]]
+                if conflicts:
+                    unique[key]["metadata_conflicts"] = sorted(set(unique[key].get("metadata_conflicts", []) + conflicts))
+                    unique[key]["verification_status"] = "metadata_conflict"
                 for field in ("arabic", "translation", "translation_language", "translation_edition",
                               "grade", "surah_name", "surah_name_arabic"):
                     if not unique[key].get(field) and record.get(field):
                         unique[key][field] = record[field]
                 unique[key]["truncated"] = unique[key]["truncated"] or record["truncated"]
-    return list(unique.values())
+    return [identify(record) for record in unique.values()]

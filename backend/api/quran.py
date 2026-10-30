@@ -16,6 +16,12 @@ router = APIRouter(
 )
 
 
+@router.get("/sources")
+def source_registry():
+    from backend.ai.source_registry import registry_metadata
+    return {"sources": registry_metadata(), "religious_correctness_verified": False}
+
+
 @router.get("/surahs")
 async def list_surahs():
     return await get_surahs()

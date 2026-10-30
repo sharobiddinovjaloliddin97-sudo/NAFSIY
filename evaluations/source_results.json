@@ -1,0 +1,796 @@
+{
+  "version": "0.9.5",
+  "measured_at_utc": "2026-10-30T22:47:30.710351+00:00",
+  "review": {
+    "engineering_review": "2026-10-31; structural labels and live result excerpts inspected during implementation",
+    "scholarly_review": "pending; not a religious correctness benchmark",
+    "license_review": "Registry links inspected; no pending publication text included",
+    "retrieval_judgment": "Small topic relevance set for top-3 en.itani lexical search; knowledge judgments intentionally exclude off-topic keyword hits. Not representative or held out."
+  },
+  "guard": {
+    "cases": 30,
+    "correct_decisions": 30,
+    "citation_precision": 1.0,
+    "unsupported_quotation_rejection_rate": 1.0,
+    "unsupported_answer_rejection_rate": 1.0,
+    "false_positive_rejection_rate": 0.0,
+    "latency_ms_p50": 0.027350000891601667,
+    "latency_ms_max": 0.5502999993041158,
+    "results": [
+      {
+        "id": "valid-reference",
+        "category": "reference",
+        "expected_valid": true,
+        "accepted": true,
+        "reason": null
+      },
+      {
+        "id": "unknown-reference",
+        "category": "fabricated_reference",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "invalid-surah",
+        "category": "invalid_reference",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "wrong-surah",
+        "category": "wrong_surah",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "wrong_source_identity"
+      },
+      {
+        "id": "wrong-ayah",
+        "category": "wrong_ayah",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "wrong_source_identity"
+      },
+      {
+        "id": "exact-translation",
+        "category": "valid_quote",
+        "expected_valid": true,
+        "accepted": true,
+        "reason": null
+      },
+      {
+        "id": "wrong-words",
+        "category": "unsupported_quote",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_quotation"
+      },
+      {
+        "id": "wrong-attribution",
+        "category": "translation_attribution",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_quotation"
+      },
+      {
+        "id": "missing-uz-translation",
+        "category": "translation_attribution",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_quotation"
+      },
+      {
+        "id": "missing-ru-translation",
+        "category": "translation_attribution",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_quotation"
+      },
+      {
+        "id": "unknown-identity",
+        "category": "wrong_identity",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "wrong_source_identity"
+      },
+      {
+        "id": "ambiguous-grade",
+        "category": "grading",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "russian-grade",
+        "category": "grading",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "uzbek-grade",
+        "category": "grading",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "uncited",
+        "category": "no_source",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "insufficient_coverage"
+      },
+      {
+        "id": "empty",
+        "category": "no_source",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "insufficient_coverage"
+      },
+      {
+        "id": "prose-quote",
+        "category": "unsupported_quote",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "injection",
+        "category": "prompt_injection",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "benign-apostrophe",
+        "category": "valid_explanation",
+        "expected_valid": true,
+        "accepted": true,
+        "reason": null
+      },
+      {
+        "id": "benign-uzbek",
+        "category": "valid_explanation",
+        "expected_valid": true,
+        "accepted": true,
+        "reason": null
+      },
+      {
+        "id": "benign-russian",
+        "category": "valid_explanation",
+        "expected_valid": true,
+        "accepted": true,
+        "reason": null
+      },
+      {
+        "id": "arabic-exact",
+        "category": "valid_quote",
+        "expected_valid": true,
+        "accepted": true,
+        "reason": null
+      },
+      {
+        "id": "arabic-diacritics-removed",
+        "category": "unsupported_quote",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_quotation"
+      },
+      {
+        "id": "arabic-extra-verse",
+        "category": "unsupported_quote",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_quotation"
+      },
+      {
+        "id": "numbering-conflict",
+        "category": "numbering_conflict",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "ambiguous_numbering"
+      },
+      {
+        "id": "source-conflict",
+        "category": "metadata_conflict",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "untrusted_source"
+      },
+      {
+        "id": "source-unavailable",
+        "category": "no_source",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "injection-role",
+        "category": "prompt_injection",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "invalid_answer_schema"
+      },
+      {
+        "id": "injection-links",
+        "category": "prompt_injection",
+        "expected_valid": false,
+        "accepted": false,
+        "reason": "unsupported_prose_claim"
+      },
+      {
+        "id": "canonical-unicode",
+        "category": "valid_quote",
+        "expected_valid": true,
+        "accepted": true,
+        "reason": null
+      }
+    ]
+  },
+  "scholar_referral": {
+    "cases": 5,
+    "referred": 5
+  },
+  "actual_ai_cost_usd": "0",
+  "configured_max_pipeline_estimate_usd": "0.0450560000",
+  "pricing_note": "Configured illustrative prices, not verified billing rates. No end-to-end model latency measured.",
+  "retrieval": {
+    "cases": 20,
+    "runs": 40,
+    "by_language": {
+      "uz-Latn/baseline": {
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms_p50": 549.374700000044,
+        "empty_results": 5
+      },
+      "uz-Latn/expanded": {
+        "precision_at_3": 0.8666666666666667,
+        "recall": 1.0,
+        "latency_ms_p50": 898.765199999616,
+        "empty_results": 0
+      },
+      "uz-Cyrl/baseline": {
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms_p50": 541.2045000011858,
+        "empty_results": 5
+      },
+      "uz-Cyrl/expanded": {
+        "precision_at_3": 0.8666666666666667,
+        "recall": 1.0,
+        "latency_ms_p50": 898.9178000010725,
+        "empty_results": 0
+      },
+      "en/baseline": {
+        "precision_at_3": 0.8666666666666667,
+        "recall": 1.0,
+        "latency_ms_p50": 904.7961000032956,
+        "empty_results": 0
+      },
+      "en/expanded": {
+        "precision_at_3": 0.8666666666666667,
+        "recall": 1.0,
+        "latency_ms_p50": 923.8647000020137,
+        "empty_results": 0
+      },
+      "ru/baseline": {
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms_p50": 539.9679000001925,
+        "empty_results": 5
+      },
+      "ru/expanded": {
+        "precision_at_3": 0.8666666666666667,
+        "recall": 1.0,
+        "latency_ms_p50": 893.0287000002863,
+        "empty_results": 0
+      }
+    },
+    "results": [
+      {
+        "id": "patience-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 666.047399998206,
+        "empty": true
+      },
+      {
+        "id": "patience-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "expanded",
+        "references": [
+          "2:45",
+          "2:153",
+          "2:250"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 880.0059999994119,
+        "empty": false
+      },
+      {
+        "id": "patience-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 547.0728000000236,
+        "empty": true
+      },
+      {
+        "id": "patience-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "expanded",
+        "references": [
+          "2:45",
+          "2:153",
+          "2:250"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 895.2209000017319,
+        "empty": false
+      },
+      {
+        "id": "patience-en",
+        "language": "en",
+        "mode": "baseline",
+        "references": [
+          "2:45",
+          "2:153",
+          "2:250"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 885.2938000018185,
+        "empty": false
+      },
+      {
+        "id": "patience-en",
+        "language": "en",
+        "mode": "expanded",
+        "references": [
+          "2:45",
+          "2:153",
+          "2:250"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 873.1478000008792,
+        "empty": false
+      },
+      {
+        "id": "patience-ru",
+        "language": "ru",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 562.4949000011839,
+        "empty": true
+      },
+      {
+        "id": "patience-ru",
+        "language": "ru",
+        "mode": "expanded",
+        "references": [
+          "2:45",
+          "2:153",
+          "2:250"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 893.0287000002863,
+        "empty": false
+      },
+      {
+        "id": "prayer-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 677.8620999975828,
+        "empty": true
+      },
+      {
+        "id": "prayer-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "expanded",
+        "references": [
+          "2:3",
+          "2:43",
+          "2:45"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 898.765199999616,
+        "empty": false
+      },
+      {
+        "id": "prayer-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 596.4879999992263,
+        "empty": true
+      },
+      {
+        "id": "prayer-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "expanded",
+        "references": [
+          "2:3",
+          "2:43",
+          "2:45"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 898.9178000010725,
+        "empty": false
+      },
+      {
+        "id": "prayer-en",
+        "language": "en",
+        "mode": "baseline",
+        "references": [
+          "2:3",
+          "2:43",
+          "2:45"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 904.7961000032956,
+        "empty": false
+      },
+      {
+        "id": "prayer-en",
+        "language": "en",
+        "mode": "expanded",
+        "references": [
+          "2:3",
+          "2:43",
+          "2:45"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 923.8647000020137,
+        "empty": false
+      },
+      {
+        "id": "prayer-ru",
+        "language": "ru",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 520.6183999980567,
+        "empty": true
+      },
+      {
+        "id": "prayer-ru",
+        "language": "ru",
+        "mode": "expanded",
+        "references": [
+          "2:3",
+          "2:43",
+          "2:45"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 882.8738999982306,
+        "empty": false
+      },
+      {
+        "id": "knowledge-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 549.374700000044,
+        "empty": true
+      },
+      {
+        "id": "knowledge-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "expanded",
+        "references": [
+          "2:32",
+          "2:120",
+          "2:145"
+        ],
+        "precision_at_3": 0.3333333333333333,
+        "recall": 1.0,
+        "latency_ms": 985.3739999998652,
+        "empty": false
+      },
+      {
+        "id": "knowledge-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 541.2045000011858,
+        "empty": true
+      },
+      {
+        "id": "knowledge-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "expanded",
+        "references": [
+          "2:32",
+          "2:120",
+          "2:145"
+        ],
+        "precision_at_3": 0.3333333333333333,
+        "recall": 1.0,
+        "latency_ms": 934.9790000014764,
+        "empty": false
+      },
+      {
+        "id": "knowledge-en",
+        "language": "en",
+        "mode": "baseline",
+        "references": [
+          "2:32",
+          "2:120",
+          "2:145"
+        ],
+        "precision_at_3": 0.3333333333333333,
+        "recall": 1.0,
+        "latency_ms": 956.9006000019726,
+        "empty": false
+      },
+      {
+        "id": "knowledge-en",
+        "language": "en",
+        "mode": "expanded",
+        "references": [
+          "2:32",
+          "2:120",
+          "2:145"
+        ],
+        "precision_at_3": 0.3333333333333333,
+        "recall": 1.0,
+        "latency_ms": 982.1573000008357,
+        "empty": false
+      },
+      {
+        "id": "knowledge-ru",
+        "language": "ru",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 518.0724999991071,
+        "empty": true
+      },
+      {
+        "id": "knowledge-ru",
+        "language": "ru",
+        "mode": "expanded",
+        "references": [
+          "2:32",
+          "2:120",
+          "2:145"
+        ],
+        "precision_at_3": 0.3333333333333333,
+        "recall": 1.0,
+        "latency_ms": 965.0277999971877,
+        "empty": false
+      },
+      {
+        "id": "mercy-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 507.8888999996707,
+        "empty": true
+      },
+      {
+        "id": "mercy-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "expanded",
+        "references": [
+          "2:64",
+          "2:105",
+          "2:157"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 961.2634000004618,
+        "empty": false
+      },
+      {
+        "id": "mercy-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 522.0103999999992,
+        "empty": true
+      },
+      {
+        "id": "mercy-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "expanded",
+        "references": [
+          "2:64",
+          "2:105",
+          "2:157"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 1027.424500000052,
+        "empty": false
+      },
+      {
+        "id": "mercy-en",
+        "language": "en",
+        "mode": "baseline",
+        "references": [
+          "2:64",
+          "2:105",
+          "2:157"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 1089.3383999973594,
+        "empty": false
+      },
+      {
+        "id": "mercy-en",
+        "language": "en",
+        "mode": "expanded",
+        "references": [
+          "2:64",
+          "2:105",
+          "2:157"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 1000.9347000013804,
+        "empty": false
+      },
+      {
+        "id": "mercy-ru",
+        "language": "ru",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 539.9679000001925,
+        "empty": true
+      },
+      {
+        "id": "mercy-ru",
+        "language": "ru",
+        "mode": "expanded",
+        "references": [
+          "2:64",
+          "2:105",
+          "2:157"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 943.9791000004334,
+        "empty": false
+      },
+      {
+        "id": "fasting-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 513.4603000005882,
+        "empty": true
+      },
+      {
+        "id": "fasting-uz-Latn",
+        "language": "uz-Latn",
+        "mode": "expanded",
+        "references": [
+          "2:183",
+          "2:196",
+          "5:95"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 884.4290000015462,
+        "empty": false
+      },
+      {
+        "id": "fasting-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 497.8972999997495,
+        "empty": true
+      },
+      {
+        "id": "fasting-uz-Cyrl",
+        "language": "uz-Cyrl",
+        "mode": "expanded",
+        "references": [
+          "2:183",
+          "2:196",
+          "5:95"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 856.5190000008442,
+        "empty": false
+      },
+      {
+        "id": "fasting-en",
+        "language": "en",
+        "mode": "baseline",
+        "references": [
+          "2:183",
+          "2:196",
+          "5:95"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 852.998900001694,
+        "empty": false
+      },
+      {
+        "id": "fasting-en",
+        "language": "en",
+        "mode": "expanded",
+        "references": [
+          "2:183",
+          "2:196",
+          "5:95"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 905.3424000012456,
+        "empty": false
+      },
+      {
+        "id": "fasting-ru",
+        "language": "ru",
+        "mode": "baseline",
+        "references": [],
+        "precision_at_3": 0.0,
+        "recall": 0.0,
+        "latency_ms": 554.8997999976564,
+        "empty": true
+      },
+      {
+        "id": "fasting-ru",
+        "language": "ru",
+        "mode": "expanded",
+        "references": [
+          "2:183",
+          "2:196",
+          "5:95"
+        ],
+        "precision_at_3": 1.0,
+        "recall": 1.0,
+        "latency_ms": 848.965599998337,
+        "empty": false
+      }
+    ]
+  },
+  "groq_calls": 0
+}

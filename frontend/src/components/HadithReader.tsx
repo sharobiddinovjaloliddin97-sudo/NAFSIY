@@ -251,7 +251,7 @@ function HadithCard({ item, copied, onCopy }: {
 
       <p className="hadith-caution">
         Manba: UmmahAPI. Hadis matni, raqamlash va
-        sahihlik bahosi mustaqil tasdiqlanmagan.
+        sahihlik bahosi mustaqil tasdiqlanmagan. grading_not_verified.
       </p>
     </article>
   );

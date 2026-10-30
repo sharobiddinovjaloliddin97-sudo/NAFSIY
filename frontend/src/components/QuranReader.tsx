@@ -32,7 +32,7 @@ type SurahDetail = Surah & {
   ayahs: Ayah[];
 };
 
-type Language = "ar" | "en" | "ru";
+type Language = "ar" | "uz" | "en" | "ru";
 
 const editions = {
   ar: {
@@ -41,14 +41,19 @@ const editions = {
     language: ""
   },
   en: {
-    label: "English — Sahih International",
-    code: "en.sahih",
+    label: "English — Talal Itani (ClearQuran.com)",
+    code: "en.itani",
     language: "en"
   },
   ru: {
     label: "Русский — Кулиев",
     code: "ru.kuliev",
     language: "ru"
+  },
+  uz: {
+    label: "O‘zbekcha — ruxsat kutilmoqda",
+    code: "",
+    language: "uz"
   }
 };
 
@@ -497,8 +502,8 @@ export default function QuranReader() {
               >
                 {Object.entries(editions).map(
                   ([key, config]) => (
-                    <option key={key} value={key}>
-                      {config.label}
+                    <option key={key} value={key} disabled={key === "uz" || key === "ru"}>
+                      {config.label}{key === "ru" ? " — ruxsat kutilmoqda" : ""}
                     </option>
                   )
                 )}
@@ -586,12 +591,14 @@ export default function QuranReader() {
                   <p className="quran-ayah-arabic" dir="rtl">
                     {ayah.text}
                   </p>
+                  <small>Arabcha: Uthmani · AlQuran Cloud · <a href="https://tanzil.net" target="_blank" rel="noreferrer">Tanzil Quran Text © 2007–2021 Tanzil Project · CC BY 3.0</a> / Quran Academy. Matn mosligi diniy izohni tasdiqlamaydi.</small>
 
                   {language !== "ar" && translation && (
                     <div className="quran-translation">
                       <p>{translation}</p>
                       <small>
                         {editions[language].label}
+                        {language === "en" && <> · <a href="https://clearquran.com/download/" target="_blank" rel="noreferrer">Translation by Talal Itani, ClearQuran.com · CC BY-ND 4.0</a></>}
                       </small>
                     </div>
                   )}

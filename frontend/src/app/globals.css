@@ -527,6 +527,9 @@ button:disabled {
 
 .source-chip {
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   align-items: center;
   gap: 5px;
   border: 1px solid #dde8dd;

@@ -5,7 +5,8 @@ import { useState, useEffect, useRef, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChatSessions } from "@/hooks/useChatSessions";
-import { CsrfError, csrfHeaders, csrfRejected } from "@/lib/csrf";
+import { CsrfError, csrfHeaders, csrfRejected, sessionScope } from "@/lib/csrf";
+import { forgetPending, readPending, rememberPending, questionDigest, pendingCreatedAt, type PendingAI } from "@/lib/pendingAI";
 import QuranReader from "@/components/QuranReader";
 import HadithReader from "@/components/HadithReader";
 import AuthPanel from "@/components/AuthPanel";
@@ -62,6 +63,7 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [sessionBusy, setSessionBusy] = useState(false);
+  const [recovery, setRecovery] = useState<PendingAI | null>(null);
   const aiRequest = useRef<AbortController | null>(null);
   const sendVersion = useRef(0);
   const pendingRequestRef = useRef<{
@@ -86,6 +88,8 @@ export default function Home() {
       aiRequest.current?.abort();
       aiRequest.current = null;
       pendingRequestRef.current = null;
+      forgetPending();
+      setRecovery(null);
       setSending(false);
       setSessionBusy(false);
       setInput("");
@@ -97,6 +101,59 @@ export default function Home() {
       aiRequest.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!loaded || !authenticated) return;
+    let cancelled = false;
+    const saved = readPending();
+    if (saved) {
+      sessionScope(true).then(scope => {
+        if (cancelled) return;
+        if (saved.scope === scope) setRecovery(saved);
+        else forgetPending();
+      }).catch(() => { if (!cancelled) forgetPending(); });
+    }
+    return () => { cancelled = true; };
+  }, [loaded, authenticated]);
+
+  async function recoverRequest() {
+    if (!recovery || sending || sessionBusy) return;
+    const context = captureContext();
+    const version = sendVersion.current;
+    setSessionBusy(true);
+    try {
+      if (await sessionScope(true) !== recovery.scope) {
+        forgetPending();
+        setRecovery(null);
+        return;
+      }
+      if (!isCurrentContext(context)) return;
+      const response = await fetch(`${API}/api/v1/ai/chats/${encodeURIComponent(recovery.sessionId)}/requests/${recovery.key}`, {
+        credentials: "include", cache: "no-store",
+      });
+      if (!response.ok) throw new Error("So‘rov holati olinmadi. Qayta kiring yoki keyinroq tekshiring.");
+      const data = await response.json();
+      if (!isCurrentContext(context)) return;
+      selectSession(recovery.sessionId);
+      if (data.status === "completed") {
+        if (await reload()) {
+          selectSession(recovery.sessionId);
+          forgetPending();
+          setRecovery(null);
+          pendingRequestRef.current = null;
+          setError("");
+        }
+      } else if (data.status === "expired") {
+        forgetPending();
+        setRecovery(null);
+        setError("Eski so‘rovni tiklash muddati tugagan.");
+      } else {
+        setError("Avvalgi savolni aynan qayta yozing va qo‘lda yuboring. Eski so‘rov kaliti ishlatiladi.");
+      }
+    } catch (err) {
+      if (isCurrentContext(context)) setError(err instanceof Error ? err.message : "So‘rov tekshirilmadi");
+    } finally { if (version === sendVersion.current) setSessionBusy(false); }
+  }
 
   async function newSession() {
     if (sending || sessionBusy || !loaded || loadError) return;
@@ -159,9 +216,26 @@ export default function Home() {
       const sessionId = activeId || await createSession(context);
       if (!isCurrentContext(context)) return;
       const pending = pendingRequestRef.current;
-      const requestKey = pending && pending.sessionId === sessionId && pending.message === question
+      const scope = await sessionScope(true);
+      if (!isCurrentContext(context)) return;
+      let saved = readPending();
+      if (saved && saved.scope !== scope) {
+        forgetPending();
+        saved = null;
+        pendingRequestRef.current = null;
+        setRecovery(null);
+        throw new Error("Sessiya o‘zgardi. Savolni qayta yuboring.");
+      }
+      const digest = await questionDigest(question);
+      const requestKey = saved && saved.sessionId === sessionId && saved.digest === digest
+        ? saved.key : pending && pending.sessionId === sessionId && pending.message === question
         ? pending.key : crypto.randomUUID();
       pendingRequestRef.current = { sessionId, message: question, key: requestKey };
+      const durable = { sessionId, key: requestKey, scope, digest, createdAt: pendingCreatedAt(saved, requestKey) };
+      if (!rememberPending(durable)) {
+        throw new Error("Qayta urinishni saqlash uchun brauzer xotirasiga ruxsat bering.");
+      }
+      setRecovery(durable);
       const securityHeaders = await csrfHeaders(false, controller.signal);
       if (!isCurrentContext(context)) return;
       requestStarted = true;
@@ -199,6 +273,8 @@ export default function Home() {
       const reloaded = await reload();
       if (reloaded && version === sendVersion.current && pendingRequestRef.current?.key === requestKey) {
         pendingRequestRef.current = null;
+        forgetPending();
+        setRecovery(null);
       }
     } catch (err) {
       if (err instanceof CsrfError && err.status === 401) {
@@ -531,6 +607,12 @@ export default function Home() {
                                   : "Hadis"}{" "}
                                 {source.reference}
                                 <span>· {source.provider}</span>
+                                <span> · {source.translation_edition || source.arabic_edition || "Nashr ko‘rsatilmagan"}</span>
+                                <span> · {source.quotation_status === "exact_source_match"
+                                  ? "Iqtibos manba matniga mos; izoh tekshirilmagan"
+                                  : "Havola; diniy to‘g‘rilik tasdiqlanmagan"}</span>
+                                {source.attribution && <span> · {source.attribution}</span>}
+                                {source.type === "hadith" && <span> · {source.numbering_system || "Raqamlash noma’lum"} · Hadis darajasi tekshirilmagan</span>}
                               </div>
                             ))}
                           </div>
@@ -558,6 +640,17 @@ export default function Home() {
               )}
 
               <div className="composer-wrap">
+                {recovery && authenticated && (
+                  <div className="chat-login-notice" role="status">
+                    <span>Oldingi so‘rov natijasi tasdiqlanmagan. Avtomatik yuborilmaydi.</span>
+                    <button type="button" disabled={sending || sessionBusy} onClick={recoverRequest}>Oldingi so‘rovni tekshirish</button>
+                    <button type="button" disabled={sending || sessionBusy} onClick={() => {
+                      if (window.confirm("Eski so‘rov bajarilgan bo‘lishi mumkin. Tiklash kalitini unutishni tasdiqlaysizmi?")) {
+                        forgetPending(); setRecovery(null); pendingRequestRef.current = null;
+                      }
+                    }}>Tiklashni unutish</button>
+                  </div>
+                )}
                 {loaded && !authenticated && !loadError && (
                   <div className="chat-login-notice">
                     <span>AI bilan suhbatlashish uchun akkauntingizga kiring.</span>

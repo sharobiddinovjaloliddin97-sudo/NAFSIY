@@ -74,6 +74,16 @@ export async function csrfHeaders(anonymous = false, signal?: AbortSignal): Prom
   return { "X-CSRF-Token": value };
 }
 
+export async function sessionScope(fresh = false): Promise<string> {
+  if (fresh) invalidateTokens();
+  const data = await tokens();
+  if (!data.session_scope || !data.csrf_token) {
+    window.dispatchEvent(new Event("nafsiy-auth-changed"));
+    throw new CsrfError(401, "Sessiya tugagan. Qayta kiring");
+  }
+  return data.session_scope;
+}
+
 export function csrfRejected(status: number, detail: unknown): boolean {
   if (status !== 403 || detail !== "CSRF validation failed") return false;
   invalidateTokens();

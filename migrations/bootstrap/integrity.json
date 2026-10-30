@@ -1,0 +1,24 @@
+{
+  "format_version": 1,
+  "baseline_revision": "69e1d999085f",
+  "hash_format": "SHA-256 over UTF-8 bytes with CRLF normalized to LF",
+  "snapshot_sha256_lf": "83f55c3b93e27649bac358aec4d2466ae910057c4b700f65f85dabe9bea7def5",
+  "baseline_tables": [
+    "ai_rate_limits",
+    "auth_users",
+    "ayahs",
+    "chat_messages",
+    "chat_sessions",
+    "surahs",
+    "translations",
+    "user_bookmarks"
+  ],
+  "migration_sha256_lf": {
+    "69e1d999085f_baseline_existing_nafsiy_schema.py": "dea82e9a01a03ea6e04558674b140be5fac1ddd1b58c3868ef3620f8532bcab0",
+    "7bbcad9d4644_add_ai_idempotency.py": "a65ff0d30b927ce7b3c6ad59736a7e796f4404b26421adf9b0fd55a7cfbaaab1",
+    "ade01cf7b885_add_authentication_rate_limits.py": "ad1ceefd1c0c1866a6054a04c28dc1d6ada255d9d43272d9106fcd75788e049d",
+    "c4d8e2a9106f_add_ai_operations_and_budgets.py": "0f8bf6dbb5e21982a1bdb1d764f9805018d629b51af5cb175ba87f3b75b65622",
+    "f9a045983bdf_add_generation_leases_and_recovery.py": "9ffbc502e61c39f35c48dc7bc849239b78f9000ed751007f73e0ddf2907b403d"
+  },
+  "schema_fingerprints_sha256_lf": "b72e5af8e82949d4762b9f36a028c2ef000ac3beb41649a40c15f40c0ab4fb40"
+}

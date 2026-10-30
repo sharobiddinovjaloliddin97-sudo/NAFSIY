@@ -34,7 +34,6 @@ Thumbs.db
 .vscode/.ropeproject
 temp/
 tmp/
-
 # Sensitive database backups
 backups/
 *.dump

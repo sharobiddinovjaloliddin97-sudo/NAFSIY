@@ -1,6 +1,7 @@
 import time
 
 from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -13,9 +14,9 @@ WINDOW_SECONDS = 60
 
 
 def check_ai_rate_limit(db: Session, user_id: str, *, commit: bool = True):
-    now = int(time.time())
-    window = now // WINDOW_SECONDS
     dialect = db.get_bind().dialect.name
+    now = int(db.scalar(select(func.extract("epoch", func.clock_timestamp())))) if dialect == "postgresql" else int(time.time())
+    window = now // WINDOW_SECONDS
     if dialect == "postgresql":
         insert = pg_insert
     elif dialect == "sqlite":

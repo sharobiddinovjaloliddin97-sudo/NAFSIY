@@ -16,9 +16,13 @@ from backend.api.auth import get_current_user, require_trusted_origin
 from backend.api.user_data import MAX_MESSAGES
 from backend.core.idempotency import complete_request, release_failed_request, reserve_request
 from backend.core.leases import GenerationLease, fence_lease, release_lease, transaction_timeouts
+from backend.core import ai_operations
+from backend.core.rate_limit import check_ai_rate_limit
+from backend.ai.provider import provider_context
 from backend.db.auth_models import User
 from backend.db.database import get_db
 from backend.db.user_data_models import ChatMessage, ChatSession
+from backend.db.idempotency_models import AIIdempotency
 
 
 router = APIRouter(prefix="/api/v1/ai", tags=["NAFSIY AI"])
@@ -38,17 +42,26 @@ class SendRequest(BaseModel):
         return value
 
 
-class SourceInfo(BaseModel):
-    type: Literal["quran", "hadith"]
-    reference: str = Field(min_length=1, max_length=200)
-    provider: str = Field(min_length=1, max_length=120)
-    verified: Literal[False] = False
+from backend.ai.source_metadata import SourceInfo
 
 
 class ChatResponse(BaseModel):
     answer: str = Field(min_length=1, max_length=20000)
     sources: list[SourceInfo] = Field(default_factory=list, max_length=20)
     model: str
+
+
+@router.get("/chats/{session_id}/requests/{request_key}")
+def request_status(session_id: str, request_key: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = db.scalar(select(AIIdempotency).where(
+        AIIdempotency.user_id == user.id, AIIdempotency.session_id == session_id,
+        AIIdempotency.request_key == request_key,
+    ))
+    if row is None:
+        return {"status": "unknown"}
+    if row.status == "completed":
+        return {"status": "expired" if row.response_json == '{"expired": true}' else "completed"}
+    return {"status": "pending"}
 
 
 def reserve_turn(db: Session, user_id: str, session_id: str, key: str, question: str) -> dict:
@@ -67,15 +80,22 @@ def reserve_turn(db: Session, user_id: str, session_id: str, key: str, question:
                           .where(ChatMessage.session_id == session_id)
                           .order_by(ChatMessage.position.desc()).limit(12)).all()
         reserved["history"] = [{"role": row.role, "content": row.content[:4000]} for row in reversed(rows)]
+        admission = ai_operations.admit(db, reserved["lease"])
+        if reserved["charge_rate"]:
+            check_ai_rate_limit(db, user_id, commit=False)
+        ai_operations.activate(db, reserved["lease"])
         db.commit()
+        ai_operations.event("request_admitted", **admission)
         return reserved
     except SQLAlchemyError as error:
         db.rollback()
+        ai_operations.event("admission_database_failed", category=type(error).__name__)
         if getattr(getattr(error, "orig", None), "sqlstate", None) == "55P03":
             raise HTTPException(409, "Chat is busy; retry later", headers={"Retry-After": "1"}) from None
         raise HTTPException(503, "AI chat database unavailable") from None
     except HTTPException:
         db.rollback()
+        ai_operations.event("request_rejected", phase="admission")
         raise
 
 
@@ -91,6 +111,7 @@ def save_turn(
         if chat is None:
             raise HTTPException(404, "Chat not found")
         fence_lease(db, lease)
+        ai_operations.owned_operation(db, lease)
         position = db.scalar(select(func.max(ChatMessage.position)).where(ChatMessage.session_id == session_id)) or 0
         first_user = db.scalar(select(ChatMessage.id).where(
             ChatMessage.session_id == session_id, ChatMessage.role == "user",
@@ -111,9 +132,11 @@ def save_turn(
             db.delete(message)
         complete_request(db, lease, result.model_dump())
         release_lease(db, lease)
+        ai_operations.release(db, lease, "completed")
         db.commit()
     except SQLAlchemyError:
         db.rollback()
+        ai_operations.event("persistence_failed")
         raise HTTPException(503, "AI messages could not be saved") from None
     except HTTPException:
         db.rollback()
@@ -148,6 +171,7 @@ async def send_message(
         except ValidationError:
             raise HTTPException(503, "Saved AI response is unavailable") from None
     lease = reserved["lease"]
+    token = provider_context.set((bind, lease))
     try:
         generated = await generate_with_lease(
             bind, lease, ask_nafsiy, question=request.message, history=reserved["history"],
@@ -164,3 +188,5 @@ async def send_message(
         except Exception as error:
             logger.error("Failed AI request cleanup: %s", type(error).__name__)
         raise
+    finally:
+        provider_context.reset(token)

@@ -8,6 +8,14 @@ export type Source = {
   reference: string;
   provider: string;
   verified?: boolean;
+  source_id?: string;
+  arabic_edition?: string;
+  translation_edition?: string;
+  attribution?: string;
+  numbering_system?: string;
+  quotation_status?: string;
+  grading_status?: string;
+  verification_status?: string;
 };
 
 export type Message = {

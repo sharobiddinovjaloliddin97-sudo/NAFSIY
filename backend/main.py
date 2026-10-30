@@ -21,19 +21,27 @@ from backend.db import ai_models
 from backend.db import idempotency_models
 from backend.db import lease_models
 from backend.db import auth_security_models
+from backend.db import operations_models
 from backend.core.auth_maintenance import cleanup_loop
+from backend.core.ai_maintenance import cleanup_loop as ai_cleanup_loop
 from backend.ai.generation import settle
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(cleanup_loop(getattr(app.state, "auth_maintenance_engine", engine)))
+    ai_task = asyncio.create_task(ai_cleanup_loop(getattr(app.state, "auth_maintenance_engine", engine)))
     try:
         yield
     finally:
         task.cancel()
+        ai_task.cancel()
         try:
             await settle(task)
+        except asyncio.CancelledError:
+            pass
+        try:
+            await settle(ai_task)
         except asyncio.CancelledError:
             pass
 

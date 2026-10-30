@@ -24,6 +24,7 @@ from backend.db import ai_models
 from backend.db import idempotency_models
 from backend.db import lease_models
 from backend.db import auth_security_models
+from backend.db import operations_models
 
 
 config = context.config
@@ -78,6 +79,12 @@ def run_migrations_offline():
 
 
 def run_migrations_online():
+    supplied = config.attributes.get("connection")
+    if supplied is not None:
+        context.configure(connection=supplied, target_metadata=target_metadata, compare_type=True)
+        with context.begin_transaction():
+            context.run_migrations()
+        return
     engine = create_engine(
         get_database_url(),
         poolclass=pool.NullPool,

@@ -19,6 +19,7 @@ from backend.core import leases
 from backend.ai import generation
 from backend.db.ai_models import AIRateLimit
 from backend.db.auth_models import User
+from backend.db.database import Base
 from backend.db.auth_security_models import AuthRateLimit
 from security_client import SecurityClient
 from backend.db.database import get_db
@@ -38,6 +39,7 @@ class AISendTests(unittest.IsolatedAsyncioTestCase):
 
         for table in (User.__table__, ChatSession.__table__, ChatMessage.__table__, Bookmark.__table__, AIRateLimit.__table__, AIIdempotency.__table__, ChatGenerationLease.__table__, AuthRateLimit.__table__):
             table.create(self.engine)
+        Base.metadata.create_all(self.engine)
 
         def local_db():
             with Session(self.engine) as session:
@@ -127,6 +129,38 @@ class AISendTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([message["role"] for message in stored["messages"]], ["user", "assistant"])
         self.assertEqual(stored["messages"][0]["content"], "Explain 2:255")
         self.assertEqual(stored["messages"][1]["sources"], self.answer["sources"])
+        self.assertEqual(self.quota().count, 1)
+
+    async def test_source_metadata_survives_persistence_and_completed_replay(self):
+        from backend.ai.retriever import source
+        from backend.ai.citation_guard import validate_grounded_answer
+        record = source("quran", "1:1", "AlQuran Cloud", translation="Synthetic fixture translation.")
+        checked = validate_grounded_answer(json.dumps({"explanation": "Cautious explanation [1:1]", "quotations": []}), [record], "en")
+        generated = {"answer": checked["answer"], "sources": checked["sources"], "model": "test"}
+        headers = {"Idempotency-Key": str(uuid.uuid4())}
+        with patch.object(ai, "ask_nafsiy", AsyncMock(return_value=generated)) as ask:
+            sent = await self.a.post(self.path, json={"message": "Source fixture"}, headers=headers)
+            replay = await self.a.post(self.path, json={"message": "Source fixture"}, headers=headers)
+        self.assertEqual(sent.status_code, 200)
+        self.assertEqual(sent.json(), replay.json())
+        ask.assert_awaited_once()
+        stored = (await self.a.get(f"/api/v1/user/chats/{self.chat_id}")).json()["messages"][-1]
+        self.assertEqual(stored["sources"], sent.json()["sources"])
+        self.assertEqual(stored["sources"][0]["source_id"], record["source_id"])
+        self.assertEqual(stored["sources"][0]["translation_edition"], "en.itani")
+        self.assertFalse(stored["sources"][0]["verified"])
+
+    async def test_read_only_recovery_status_requires_ownership_and_never_calls_provider(self):
+        key = str(uuid.uuid4())
+        reserved = self.reserve(key)
+        path = f"/api/v1/ai/chats/{self.chat_id}/requests/{key}"
+        with patch.object(ai, "ask_nafsiy", AsyncMock()) as ask:
+            self.assertEqual((await self.a.get(path)).json(), {"status": "pending"})
+            self.assertEqual((await self.b.get(path)).json(), {"status": "unknown"})
+            self.assertEqual((await self.guest.get(path)).status_code, 401)
+            self.save(reserved)
+            self.assertEqual((await self.a.get(path)).json(), {"status": "completed"})
+            ask.assert_not_awaited()
         self.assertEqual(self.quota().count, 1)
 
     async def test_authentication_ownership_and_origin_before_quota(self):
@@ -456,18 +490,22 @@ class AISendTests(unittest.IsolatedAsyncioTestCase):
         migration = import_module("migrations.versions.7bbcad9d4644_add_ai_idempotency")
         recovery = import_module("migrations.versions.f9a045983bdf_add_generation_leases_and_recovery")
         security = import_module("migrations.versions.ade01cf7b885_add_authentication_rate_limits")
+        operations = import_module("migrations.versions.c4d8e2a9106f_add_ai_operations_and_budgets")
         self.assertEqual(migration.down_revision, "69e1d999085f")
         engine = create_engine("sqlite://")
         try:
-            existing = [table for table in Base.metadata.sorted_tables if table.name not in ("ai_idempotency", "chat_generation_leases", "auth_rate_limits")]
+            existing = [table for table in Base.metadata.sorted_tables if table.name not in ("ai_idempotency", "chat_generation_leases", "auth_rate_limits", "ai_operations_gate", "ai_global_slots", "ai_budgets", "ai_operations", "ai_provider_attempts")]
             Base.metadata.create_all(engine, tables=existing)
             with engine.begin() as connection:
+                connection.execute(text("DROP INDEX ix_ai_rate_limits_created_at"))
                 context = MigrationContext.configure(connection)
                 with Operations.context(context):
                     migration.upgrade()
                     recovery.upgrade()
                     security.upgrade()
+                    operations.upgrade()
                     self.assertEqual(compare_metadata(context, Base.metadata), [])
+                    operations.downgrade()
                     security.downgrade()
                     recovery.downgrade()
                     migration.downgrade()

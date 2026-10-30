@@ -1,5 +1,7 @@
 import asyncio
 import unittest
+from dataclasses import replace
+from backend.ai.source_registry import REGISTRY, LicenseState
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -8,7 +10,7 @@ from pydantic import ValidationError
 from backend.ai import retriever
 
 
-def verse(reference, edition="en.sahih", text="English source"):
+def verse(reference, edition="en.itani", text="English source"):
     surah, ayah = map(int, reference.split(":"))
     return {"surah": {"number": surah}, "numberInSurah": ayah,
             "edition": {"identifier": edition}, "text": text}
@@ -24,6 +26,12 @@ def payload(data):
 
 
 class RetrieverTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Synthetic adapter fixtures only; never enables the live source registry.
+        override = patch.dict(REGISTRY, {"ummah-hadith": replace(REGISTRY["ummah-hadith"], license_state=LicenseState.LICENSED)})
+        override.start()
+        self.addCleanup(override.stop)
+
     async def test_duplicate_records_keep_excerpt_and_edition_metadata(self):
         original = retriever.source("quran", "1:1", "AlQuran Cloud", arabic="Arabic source")
         translated = retriever.source("quran", "1:1", "AlQuran Cloud", translation="x" * 6001)
@@ -32,9 +40,9 @@ class RetrieverTests(unittest.IsolatedAsyncioTestCase):
         ):
             records = await retriever.retrieve_sources({"language": "en", "quran_references": ["1:1"],
                                                         "quran_queries": ["mercy"]})
-        self.assertEqual(len(records), 1)
-        self.assertTrue(records[0]["truncated"])
-        self.assertEqual(records[0]["translation_edition"], "en.sahih")
+        self.assertEqual(len(records), 2)  # Distinct edition records cannot be silently merged.
+        self.assertTrue(records[1]["truncated"])
+        self.assertEqual(records[1]["translation_edition"], "en.itani")
         self.assertEqual(records[0]["arabic"], "Arabic source")
 
     async def retrieve(self, plan, handler):
@@ -65,7 +73,7 @@ class RetrieverTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([record["reference"] for record in records], ["1:1", "bukhari:1", "2:2", "bukhari:2"])
         self.assertTrue(all(record["verified"] is False for record in records))
         self.assertTrue(all(record["translation_language"] == "en" for record in records))
-        self.assertEqual(records[0]["translation_edition"], "en.sahih")
+        self.assertEqual(records[0]["translation_edition"], "en.itani")
         self.assertEqual(records[-1]["arabic"], "")
         self.assertEqual(records[-1]["grade"], "Sahih")
 

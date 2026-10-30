@@ -90,6 +90,8 @@ def fence_lease(db: Session, lease: GenerationLease):
         *owned(lease), ChatGenerationLease.expires_at > clock(db),
     ).values(expires_at=deadline(db), updated_at=clock(db)))
     if changed.rowcount != 1:
+        from backend.core.ai_operations import event
+        event("fencing_rejected", phase="chat")
         raise HTTPException(409, "Generation lease lost; retry with the same Idempotency-Key", headers={"Retry-After": "1"})
 
 

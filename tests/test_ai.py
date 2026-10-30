@@ -1,4 +1,6 @@
 import json
+from dataclasses import replace
+from backend.ai.source_registry import REGISTRY, LicenseState
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +14,8 @@ from backend.ai.retriever import SearchPlan, source
 
 
 def completion(content, finish_reason="stop"):
+    if not content.startswith("{") and finish_reason == "stop":
+        content = json.dumps({"explanation": content, "quotations": []})
     return ChatCompletion(
         id="chat", object="chat.completion", created=0, model="test",
         choices=[{"index": 0, "finish_reason": finish_reason, "message": {
@@ -30,6 +34,11 @@ def fake_client(responses):
 
 
 class AITests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        override = patch.dict(REGISTRY, {"ummah-hadith": replace(REGISTRY["ummah-hadith"], license_state=LicenseState.LICENSED)})
+        override.start()
+        self.addCleanup(override.stop)
+
     async def test_unsupported_citations_are_withheld_and_uncited_sources_removed(self):
         plan = SearchPlan(language="en", quran_references=["2:255"], hadith_references=["bukhari:1"])
         records = [source("quran", "2:255", "AlQuran Cloud", "Arabic"),
@@ -45,11 +54,12 @@ class AITests(unittest.IsolatedAsyncioTestCase):
             ), patch.object(agent, "retrieve_sources", AsyncMock(return_value=records)):
                 result = await agent.ask_nafsiy("Explain")
             self.assertEqual([item["reference"] for item in result["sources"]], expected)
-            if "[2:999]" in answer:
+            if "[2:999]" in answer or answer == "Uncited explanation":
                 self.assertEqual(result["answer"], agent.INVALID_CITATIONS["en"])
                 self.assertNotIn("[2:999]", result["answer"])
             else:
-                self.assertEqual(result["answer"], answer)
+                self.assertIn(answer, result["answer"])
+                self.assertIn("unverified", result["answer"])
 
     async def test_source_first_order_and_metadata(self):
         plan = SearchPlan(language="uz", quran_references=["1:1"])
@@ -70,8 +80,10 @@ class AITests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("tools", calls[1].kwargs)
         bundle = json.loads(calls[1].kwargs["messages"][-1]["content"])
         self.assertEqual(bundle["SOURCES"], [record])
-        self.assertEqual(result["sources"], [{"type": "quran", "reference": "1:1",
-                                             "provider": "AlQuran Cloud", "verified": False}])
+        self.assertEqual(result["sources"][0]["reference"], "1:1")
+        self.assertEqual(result["sources"][0]["translation_edition"], "en.itani")
+        self.assertEqual(result["sources"][0]["quotation_status"], "not_quoted")
+        self.assertFalse(result["sources"][0]["verified"])
         self.assertNotIn("arabic", result["sources"][0])
         context.__aexit__.assert_awaited_once()
 
@@ -138,6 +150,7 @@ class AITests(unittest.IsolatedAsyncioTestCase):
         request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
         errors = [
             (TimeoutError(), 504),
+            (RuntimeError("private provider payload"), 502),
             (RateLimitError(
                 "limit", response=httpx.Response(429, request=request), body=None,
             ), 429),

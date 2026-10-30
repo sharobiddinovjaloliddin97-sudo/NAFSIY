@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint, false
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.db.database import Base
@@ -35,5 +35,6 @@ class AIIdempotency(Base):
     lease_owner: Mapped[str | None] = mapped_column(String(32), nullable=True)
     lease_version: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     rate_charged: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    provider_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)

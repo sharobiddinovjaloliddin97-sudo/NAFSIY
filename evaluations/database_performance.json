@@ -1,0 +1,151 @@
+{
+  "server_version_num": 160014,
+  "synthetic": true,
+  "fixtures": {
+    "accounts": 100,
+    "chats": 5000,
+    "messages": 100000,
+    "attempts": 25000
+  },
+  "indexes_added": [],
+  "queries": {
+    "chat_ownership_order": {
+      "median_execution_ms": 0.07,
+      "plan": {
+        "Node Type": "Limit",
+        "Actual Rows": 50,
+        "Actual Total Time": 0.045,
+        "Shared Hit Blocks": 53,
+        "Shared Read Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Sort",
+            "Actual Rows": 50,
+            "Actual Total Time": 0.043,
+            "Shared Hit Blocks": 53,
+            "Shared Read Blocks": 0,
+            "Plans": [
+              {
+                "Node Type": "Bitmap Heap Scan",
+                "Actual Rows": 50,
+                "Actual Total Time": 0.034,
+                "Shared Hit Blocks": 53,
+                "Shared Read Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Bitmap Index Scan",
+                    "Index Name": "ix_chat_sessions_user_updated",
+                    "Actual Rows": 50,
+                    "Actual Total Time": 0.007,
+                    "Shared Hit Blocks": 3,
+                    "Shared Read Blocks": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "message_history": {
+      "median_execution_ms": 0.017,
+      "plan": {
+        "Node Type": "Limit",
+        "Actual Rows": 12,
+        "Actual Total Time": 0.008,
+        "Shared Hit Blocks": 4,
+        "Shared Read Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Index Scan",
+            "Index Name": "chat_messages_session_id_position_key",
+            "Actual Rows": 12,
+            "Actual Total Time": 0.008,
+            "Shared Hit Blocks": 4,
+            "Shared Read Blocks": 0
+          }
+        ]
+      }
+    },
+    "idempotency_key": {
+      "median_execution_ms": 0.012,
+      "plan": {
+        "Node Type": "Index Scan",
+        "Index Name": "uq_ai_idempotency_request",
+        "Actual Rows": 1,
+        "Actual Total Time": 0.006,
+        "Shared Hit Blocks": 3,
+        "Shared Read Blocks": 0
+      }
+    },
+    "lease_owner": {
+      "median_execution_ms": 0.014,
+      "plan": {
+        "Node Type": "Index Scan",
+        "Index Name": "chat_generation_leases_pkey",
+        "Actual Rows": 1,
+        "Actual Total Time": 0.005,
+        "Shared Hit Blocks": 3,
+        "Shared Read Blocks": 0
+      }
+    },
+    "lease_expiry_backlog": {
+      "median_execution_ms": 0.921,
+      "plan": {
+        "Node Type": "Aggregate",
+        "Actual Rows": 1,
+        "Actual Total Time": 0.746,
+        "Shared Hit Blocks": 97,
+        "Shared Read Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Seq Scan",
+            "Actual Rows": 5000,
+            "Actual Total Time": 0.567,
+            "Shared Hit Blocks": 97,
+            "Shared Read Blocks": 0
+          }
+        ]
+      }
+    },
+    "rate_cleanup": {
+      "median_execution_ms": 0.035,
+      "plan": {
+        "Node Type": "Limit",
+        "Actual Rows": 100,
+        "Actual Total Time": 0.025,
+        "Shared Hit Blocks": 4,
+        "Shared Read Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Index Scan",
+            "Index Name": "ix_ai_rate_limits_created_at",
+            "Actual Rows": 100,
+            "Actual Total Time": 0.02,
+            "Shared Hit Blocks": 4,
+            "Shared Read Blocks": 0
+          }
+        ]
+      }
+    },
+    "usage_24h": {
+      "median_execution_ms": 3.981,
+      "plan": {
+        "Node Type": "Aggregate",
+        "Actual Rows": 1,
+        "Actual Total Time": 3.964,
+        "Shared Hit Blocks": 511,
+        "Shared Read Blocks": 0,
+        "Plans": [
+          {
+            "Node Type": "Seq Scan",
+            "Actual Rows": 1440,
+            "Actual Total Time": 3.706,
+            "Shared Hit Blocks": 511,
+            "Shared Read Blocks": 0
+          }
+        ]
+      }
+    }
+  }
+}

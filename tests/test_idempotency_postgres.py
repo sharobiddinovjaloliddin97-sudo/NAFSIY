@@ -11,6 +11,7 @@ import uuid
 from dotenv import dotenv_values
 from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.orm import Session
+from operations_fixture import cleanup_operations
 from security_client import POSTGRES_TEST_SECRET, SecurityClient, cleanup_postgres_bootstrap
 
 
@@ -128,6 +129,7 @@ class PostgreSQLIdempotencyTests(unittest.TestCase):
                 self.assertEqual(quota, 1)
         finally:
             with Session(engine) as session:
+                cleanup_operations(session, user_id)
                 session.execute(delete(User).where(User.id == user_id))
                 session.execute(delete(AIRateLimit).where(AIRateLimit.bucket_key.like(f"{user_id}:%")))
                 cleanup_postgres_bootstrap(session)

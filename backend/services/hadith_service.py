@@ -1,11 +1,14 @@
 
 import httpx
 from fastapi import HTTPException
+from backend.ai.source_registry import permitted
 
 HADITH_API = "https://ummahapi.com/api/hadith"
 
 
 async def fetch_hadith(path: str, params: dict | None = None):
+    if not permitted("ummah-hadith"):
+        raise HTTPException(503, "Hadith translation permissions and edition provenance are pending review")
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
             response = await client.get(

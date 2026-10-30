@@ -20,6 +20,7 @@ from backend.db.idempotency_models import AIIdempotency
 from backend.db.lease_models import ChatGenerationLease
 from backend.db.user_data_models import ChatMessage, ChatSession
 from test_idempotency_postgres import _test_database_url, send_from_process
+from operations_fixture import cleanup_operations
 from security_client import cleanup_postgres_bootstrap
 
 
@@ -88,6 +89,7 @@ class PostgreSQLGenerationTests(unittest.TestCase):
     def tearDown(self):
         try:
             with Session(self.engine) as db:
+                cleanup_operations(db, self.user_id)
                 db.execute(delete(User).where(User.id == self.user_id))
                 db.execute(delete(AIRateLimit).where(AIRateLimit.bucket_key.like(f"{self.user_id}:%")))
                 cleanup_postgres_bootstrap(db)

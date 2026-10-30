@@ -21,6 +21,7 @@ from backend.db.user_data_models import ChatSession
 class GenerationMigrationTests(unittest.TestCase):
     def test_legacy_processing_and_completed_records_survive_recovery_migration(self):
         old = import_module("migrations.versions.7bbcad9d4644_add_ai_idempotency")
+        operations = import_module("migrations.versions.c4d8e2a9106f_add_ai_operations_and_budgets")
         new = import_module("migrations.versions.f9a045983bdf_add_generation_leases_and_recovery")
         self.assertEqual(new.down_revision, old.revision)
         engine = create_engine("sqlite://")
@@ -29,10 +30,11 @@ class GenerationMigrationTests(unittest.TestCase):
         answer = {"answer": "Legacy completed answer", "sources": [], "model": "test"}
         try:
             existing = [table for table in Base.metadata.sorted_tables if table.name not in (
-                "ai_idempotency", "chat_generation_leases",
+                "ai_idempotency", "chat_generation_leases", "ai_operations_gate", "ai_global_slots", "ai_budgets", "ai_operations", "ai_provider_attempts",
             )]
             Base.metadata.create_all(engine, tables=existing)
             with engine.begin() as connection:
+                connection.execute(text("DROP INDEX ix_ai_rate_limits_created_at"))
                 with Operations.context(MigrationContext.configure(connection)):
                     old.upgrade()
                 connection.execute(User.__table__.insert().values(id=user_id, email="legacy@example.com", password_hash="unusable"))
@@ -46,6 +48,7 @@ class GenerationMigrationTests(unittest.TestCase):
                         "response": response, "now": datetime.now(timezone.utc).isoformat(" ")})
                 with Operations.context(MigrationContext.configure(connection)):
                     new.upgrade()
+                    operations.upgrade()
             with Session(engine) as db:
                 records = db.scalars(select(AIIdempotency)).all()
                 self.assertTrue(all(record.rate_charged and record.lease_owner is None and record.lease_version is None for record in records))
@@ -57,6 +60,7 @@ class GenerationMigrationTests(unittest.TestCase):
                 self.assertEqual(db.scalar(select(func.count()).select_from(AIRateLimit)), 0)
             with engine.begin() as connection:
                 with Operations.context(MigrationContext.configure(connection)):
+                    operations.downgrade()
                     new.downgrade()
                 self.assertNotIn("chat_generation_leases", inspect(connection).get_table_names())
                 self.assertNotIn("rate_charged", {column["name"] for column in inspect(connection).get_columns("ai_idempotency")})
