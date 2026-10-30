@@ -4,7 +4,7 @@ import httpx
 from fastapi import HTTPException
 
 PRAYER_API_URL = "https://api.aladhan.com/v1"
-# Tashkent city reference: https://www.geonames.org/1512569/tashkent.html
+
 TASHKENT_COORDINATES = (41.26465, 69.21627)
 REQUIRED_TIMINGS = ("Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha")
 
@@ -31,7 +31,7 @@ async def get_prayer_times(
         and country.strip().casefold() in {"uzbekistan", "uz", "uzb"}
     )
     if is_tashkent:
-        # Avoid incorrect coordinates returned by the upstream city lookup.
+
         url = f"{PRAYER_API_URL}/timings/{prayer_date.strftime('%d-%m-%Y')}"
         params = {
             "latitude": TASHKENT_COORDINATES[0],

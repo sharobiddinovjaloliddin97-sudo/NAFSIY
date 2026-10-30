@@ -1,6 +1,36 @@
+
+# Secrets
 .env
 .env.*
 !.env.example
+!.env.*.example
+
+# Python
 .venv/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local files
+.DS_Store
+Thumbs.db
+*.log
+
+# IDE / temporary
+.idea/
+.vscode/.ropeproject
+temp/
+tmp/
