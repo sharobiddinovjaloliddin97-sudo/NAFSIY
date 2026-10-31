@@ -244,3 +244,85 @@ class DeploymentTests(unittest.TestCase):
             if file.name.startswith("e6f1027a93bd"): continue
             original=subprocess.check_output(["git","show",f"HEAD:{file.as_posix()}"])
             self.assertEqual(original.replace(b"\r\n",b"\n"),file.read_bytes().replace(b"\r\n",b"\n"))
+
+    def test_client_ip_peer_attribution_and_spoof_resistance(self):
+        from backend.core.request_security import client_ip, rate_ip
+        from backend.core.config import settings
+
+        def make_request(client_host="198.51.100.42", headers=None):
+            scope = {
+                "type": "http",
+                "client": (client_host, 12345) if client_host else None,
+                "headers": [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
+            }
+            from starlette.requests import Request
+            return Request(scope)
+
+        with patch.object(settings, "APP_ENV", "staging"), \
+             patch.object(settings, "TRUSTED_PROXY_CIDRS", []):
+
+            # 1. Standard peer attribution
+            req = make_request("198.51.100.42")
+            self.assertEqual(client_ip(req), "198.51.100.42")
+            self.assertEqual(rate_ip(req), "198.51.100.42")
+
+            # 2. IPv6 peer attributes to IPv6 and rates /64
+            req_v6 = make_request("2001:db8:abcd:0012::1")
+            self.assertEqual(client_ip(req_v6), "2001:db8:abcd:12::1")
+            self.assertEqual(rate_ip(req_v6), "2001:db8:abcd:12::/64")
+
+            # 3. Spoofed X-Forwarded-For is ignored when peer is not a trusted proxy
+            req_spoofed_xff = make_request("198.51.100.42", {
+                "x-forwarded-for": "1.1.1.1, 2.2.2.2",
+            })
+            self.assertEqual(client_ip(req_spoofed_xff), "198.51.100.42")
+
+            # 4. Spoofed CF-Connecting-IP is ignored
+            req_spoofed_cf = make_request("198.51.100.42", {
+                "cf-connecting-ip": "1.1.1.1",
+            })
+            self.assertEqual(client_ip(req_spoofed_cf), "198.51.100.42")
+
+            # 5. Privileged headers (x-nafsiy-client-ip, x-staging-proxy-secret) cannot bypass peer attribution
+            req_spoofed_priv = make_request("198.51.100.42", {
+                "x-staging-proxy-secret": "arbitrary_secret",
+                "x-nafsiy-client-ip": "10.99.99.99",
+            })
+            self.assertEqual(client_ip(req_spoofed_priv), "198.51.100.42")
+
+            # 6. Missing or invalid client fails closed
+            req_missing = make_request(None)
+            self.assertEqual(client_ip(req_missing), "unknown")
+
+    def test_multi_origin_staging_validation(self):
+        # 1. Valid multi-origin configuration for custom domain + staging web
+        multi_config = self.config(
+            PUBLIC_WEB_URL="https://nafsiy.uz",
+            AUTH_TRUSTED_ORIGINS=["https://nafsiy.uz", "https://nafsiy-staging-web.onrender.com"],
+            CORS_ORIGINS=["https://nafsiy.uz", "https://nafsiy-staging-web.onrender.com"],
+        )
+        validate_staging(multi_config)
+
+        # 2. Fails if PUBLIC_WEB_URL is not in AUTH_TRUSTED_ORIGINS
+        with self.assertRaises(ValueError):
+            validate_staging(self.config(
+                PUBLIC_WEB_URL="https://other.example.com",
+                AUTH_TRUSTED_ORIGINS=["https://nafsiy.uz"],
+                CORS_ORIGINS=["https://nafsiy.uz"],
+            ))
+
+        # 3. Fails if CORS_ORIGINS != AUTH_TRUSTED_ORIGINS
+        with self.assertRaises(ValueError):
+            validate_staging(self.config(
+                PUBLIC_WEB_URL="https://nafsiy.uz",
+                AUTH_TRUSTED_ORIGINS=["https://nafsiy.uz", "https://nafsiy-staging-web.onrender.com"],
+                CORS_ORIGINS=["https://nafsiy.uz"],
+            ))
+
+        # 4. Fails if any origin is insecure HTTP
+        with self.assertRaises(ValueError):
+            validate_staging(self.config(
+                PUBLIC_WEB_URL="https://nafsiy.uz",
+                AUTH_TRUSTED_ORIGINS=["https://nafsiy.uz", "http://nafsiy-staging-web.onrender.com"],
+                CORS_ORIGINS=["https://nafsiy.uz", "http://nafsiy-staging-web.onrender.com"],
+            ))

@@ -37,18 +37,19 @@ export default function Recovery() {
         body: JSON.stringify(token ? { token, ...(purpose === "reset" ? { password } : {}) } : { email }),
       });
       if (!response.ok) { clearCsrf(); throw new Error("Request failed or link expired. Try again or request a new link."); }
-      setNotice(token ? "Completed. Sign in again." : "If eligible, account instructions will be sent.");
+      setNotice(token ? (purpose === "verify" ? "Completed. Email tasdiqlandi! Endi tizimga kirishingiz mumkin." : "Completed. Sign in again.") : "If eligible, account instructions will be sent.");
       setToken(""); setPassword("");
     } catch { setNotice("Request failed or link expired. Try again or request a new link."); }
     finally { setBusy(false); }
   }
   return <main style={{ maxWidth: 480, margin: "4rem auto", padding: 24 }}>
-    <h1>Account recovery</h1><p>Links expire and can be used once. Your password is never sent by email.</p>
+    <h1>{token && purpose === "verify" ? "Emailni tasdiqlash" : "Account recovery"}</h1>
+    <p>{token && purpose === "verify" ? "Emailingizni tasdiqlash uchun quyidagi 'Confirm' tugmasini bosing:" : "Links expire and can be used once. Your password is never sent by email."}</p>
     <form onSubmit={submit}>
       {!token && <><label>Action <select value={purpose} onChange={e => setPurpose(e.target.value)}><option value="reset">Reset password</option><option value="verify">Verify email</option></select></label>
       <label>Email <input type="email" required maxLength={320} value={email} onChange={e => setEmail(e.target.value)} /></label></>}
       {token && purpose === "reset" && <label>New password <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={password} onChange={e => setPassword(e.target.value)} /></label>}
       <button disabled={busy}>{busy ? "Please wait" : token ? "Confirm" : "Send instructions"}</button>
-    </form><p role="status">{notice}</p><Link href="/">Back to NAFSIY</Link>
+    </form><p role="status">{notice}</p><Link href="/">Back to NAFSIY / Bosh sahifaga qaytish</Link>
   </main>;
 }

@@ -108,7 +108,7 @@ def get_current_user(
 
 
 class RegistrationResponse(BaseModel):
-    message: str = "Registration request accepted. Sign in with your email and password."
+    message: str = "Registration request accepted. Check your email for the verification link before signing in."
 
 
 @router.post("/register", response_model=RegistrationResponse, status_code=202, dependencies=[Depends(require_login_csrf)])

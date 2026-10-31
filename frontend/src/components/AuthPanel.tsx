@@ -72,7 +72,7 @@ async function authRequest(
       throw new AuthRequestError(403, "Xavfsizlik tokeni yangilanishi kerak. Qayta urinib ko‘ring");
     }
     const messages: Record<number, string> = {
-      401: "Email yoki parol noto‘g‘ri",
+      401: "Email yoki parol noto‘g‘ri (yoki emailingiz tasdiqlanmagan. Pochtadagi tasdiqlash havolasini bosing)",
       403: "Bu so‘rovga ruxsat berilmadi",
       409: "Sessiya o‘zgardi. Qayta urinib ko‘ring",
       422: "Email va parolni tekshiring",
@@ -232,7 +232,7 @@ export default function AuthPanel() {
       if (mode === "register") {
         setMode("login");
         setPassword("");
-        setNotice("So‘rov qabul qilindi. Email va parolingiz bilan tizimga kiring.");
+        setNotice("Ro‘yxatdan o‘tish muvaffaqiyatli qabul qilindi! Emailingizga tasdiqlash havolasi yuborildi. Iltimos, emailingizni (jumladan Spam papkasini) ochib, havolani tasdiqlang, so‘ng tizimga kiring.");
         return;
       }
       setUser(readUser(data));

@@ -13,8 +13,15 @@ def validate_staging(settings):
     origin.port
     if origin.scheme != "https" or not origin.hostname or origin.path or origin.query or origin.fragment or origin.username is not None:
         raise ValueError("Staging requires an exact HTTPS frontend origin")
-    if settings.AUTH_TRUSTED_ORIGINS != [settings.PUBLIC_WEB_URL] or settings.CORS_ORIGINS != [settings.PUBLIC_WEB_URL]:
-        raise ValueError("Staging origin lists must contain only the frontend origin")
+    if not settings.AUTH_TRUSTED_ORIGINS or settings.PUBLIC_WEB_URL not in settings.AUTH_TRUSTED_ORIGINS:
+        raise ValueError("PUBLIC_WEB_URL must be included in AUTH_TRUSTED_ORIGINS")
+    if settings.CORS_ORIGINS != settings.AUTH_TRUSTED_ORIGINS:
+        raise ValueError("CORS_ORIGINS must match AUTH_TRUSTED_ORIGINS")
+    for item in settings.AUTH_TRUSTED_ORIGINS:
+        o = urlsplit(item)
+        o.port
+        if o.scheme != "https" or not o.hostname or o.path or o.query or o.fragment or o.username is not None:
+            raise ValueError(f"Origin {item} is not a valid HTTPS origin")
     if not settings.AUTH_COOKIE_SECURE or len(settings.JWT_SECRET_KEY) < 48:
         raise ValueError("Staging requires Secure cookies and a random signing key")
     if settings.ACCOUNT_DELETION_ENABLED:
