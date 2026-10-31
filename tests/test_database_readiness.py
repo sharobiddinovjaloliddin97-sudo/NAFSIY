@@ -33,7 +33,7 @@ class ReadinessUnitTests(unittest.TestCase):
         result = ready.verify_artifacts()
         self.assertEqual(result["baseline_revision"], ready.BASELINE)
         self.assertEqual(len(result["baseline_tables"]), 8)
-        self.assertEqual(len(result["migration_sha256_lf"]), 5)
+        self.assertEqual(len(result["migration_sha256_lf"]), 6)
 
     def test_tampered_snapshot_fails_before_connecting(self):
         with patch.object(ready, "lf_hash", return_value="bad"):

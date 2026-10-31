@@ -1,0 +1,8 @@
+# Install on a private runner only after approval and restore/key-recovery rehearsal.
+# Wrapper must source root-readable secrets, cd to the checkout and alert on nonzero exit.
+# UTC; no repository init or retention pruning is performed automatically.
+CRON_TZ=UTC
+15 2 * * * /opt/nafsiy/ops/run-backup >> /var/log/nafsiy-backup.jsonl 2>&1
+# Separate dead-man alert: no successful receipt within 26 hours => page operator.
+# Monthly: recover offsite snapshot into NEW quarantined PG18 target, replay erasures,
+# invalidate sessions/recovery tokens, compare fingerprints and record RPO/RTO.

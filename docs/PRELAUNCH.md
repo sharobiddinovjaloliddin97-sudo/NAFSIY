@@ -1,3 +1,7 @@
+# Current private-staging engineering status ? 2026-10-31
+
+**NOT READY.** Current deliverables, exact file inventory, tests and unresolved gates: [STAGING_READINESS.md](STAGING_READINESS.md). Deployment/rollback: [RENDER_STAGING.md](RENDER_STAGING.md). Repository head is now `e6f1027a93bd`; only local isolated targets were migrated. Primary/shared Neon schemas were not changed. The historical sections below describe earlier releases.
+
 # NAFSIY V0.9.4.4 — Pre-launch holati
 
 Holat: development. Ommaviy production deploy bajarilmadi. Quyidagi tekshiruvlar V1.0 launch tasdig‘i hisoblanmaydi.

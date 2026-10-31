@@ -1,0 +1,63 @@
+# PREPARATION ONLY. Applying this blueprint provisions paid services; explicit approval required.
+services:
+  - type: pserv
+    name: nafsiy-staging-api
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    autoDeployTrigger: "off"
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PUBLIC_WEB_URL
+        sync: false
+      - key: AUTH_TRUSTED_ORIGINS
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "true"
+      - key: EMAIL_MODE
+        value: smtp
+      - key: EMAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAX_GLOBAL_AI_GENERATIONS
+        value: "2"
+      - key: AI_INPUT_USD_PER_MILLION
+        value: "0.15"
+      - key: AI_OUTPUT_USD_PER_MILLION
+        value: "0.60"
+  - type: web
+    name: nafsiy-staging-web
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: "off"
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: API_INTERNAL_URL
+        sync: false
+      - key: STAGING_ACCESS_USER
+        sync: false
+      - key: STAGING_ACCESS_PASSWORD
+        sync: false

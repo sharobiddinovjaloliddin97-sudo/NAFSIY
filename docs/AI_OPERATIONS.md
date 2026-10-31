@@ -1,3 +1,7 @@
+# Staging preparation update ? 2026-10-31
+
+Staging blueprint overrides model pricing to $0.15 input / $0.60 output per million tokens for `openai/gpt-oss-120b`, checked against https://console.groq.com/docs/model/openai/gpt-oss-120b on 2026-10-31. Cached-input discounts are not assumed; development defaults remain conservative illustrative estimates. Staging capacity is capped at two until intended-platform load approval. See [RENDER_STAGING.md](RENDER_STAGING.md) for private telemetry, cost/availability alerts and deployment requirements, and [STAGING_READINESS.md](STAGING_READINESS.md) for final tests. Local synthetic load/crash proofs do not establish Render/Neon/Groq plan latency or usable quotas.
+
 # NAFSIY V0.9.4.4 — AI operations
 
 Development only. No production migration or deployment. Migration `c4d8e2a9106f` follows `ade01cf7b885`; previous revisions remain unchanged. Existing CSRF, explicit Origin checks, JWT ownership, citations, per-chat fencing and atomic message persistence remain mandatory.

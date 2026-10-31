@@ -23,6 +23,8 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
             "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool,
         )
         User.__table__.create(self.engine)
+        from backend.db.auth_models import RecoveryToken
+        RecoveryToken.__table__.create(self.engine)
         AuthRateLimit.__table__.create(self.engine)
 
         def local_db():

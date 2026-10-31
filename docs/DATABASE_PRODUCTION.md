@@ -1,3 +1,7 @@
+# Current staging preparation ? 2026-10-31
+
+New repository head `e6f1027a93bd` (parent `c4d8e2a9106f`) adds account security state/recovery tokens. All prior migration checksums are preserved and the new fingerprint was recorded on a nonce-owned local PostgreSQL 16 database. Primary and shared Neon test schemas were not changed. [STAGING_READINESS.md](STAGING_READINESS.md) records final checks; [RENDER_STAGING.md](RENDER_STAGING.md) documents the encrypted offsite adapter/scheduler preparation and release gates. Actual offsite integration and an authorized isolated Neon 18 restore remain unverified. [ERASURE_REPLAY.md](ERASURE_REPLAY.md) specifies restored credential invalidation and journal replay; deletion stays disabled. Earlier sections retain V0.9.6 evidence.
+
 # NAFSIY V0.9.6 — production database readiness
 
 Prepared on 2026-10-31. **No deployment, primary connection/migration, production deletion, commit or push was performed.** The migration head remains `c4d8e2a9106f`. All five historical revision files are unchanged.

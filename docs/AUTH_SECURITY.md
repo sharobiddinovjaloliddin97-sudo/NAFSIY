@@ -1,3 +1,11 @@
+# Current authentication additions ? 2026-10-31
+
+Repository head `e6f1027a93bd` adds email verification, expiring hashed single-use recovery tokens and account-wide session generation revocation. Logout increments `auth_version`, invalidating copied JWTs and all other sessions; reset additionally removes outstanding recovery links. Verification is required by staging validation and optional in development. Existing accounts are unverified after migration; there is no automatic verification backfill. New JWTs carry the generation authenticated by the password check, including when reset races cookie issuance. Legacy jti-bearing tokens imply generation zero and cease working after revocation. CSRF bootstrap also rejects revoked/unverified sessions.
+
+All new recovery POST endpoints require signed anonymous CSRF and trusted Origin. Request responses are generic, with IP/pair limits; confirmation is IP-limited. Verification links expire after 60 minutes, reset links after 30. Only SHA-256 token digests are stored; concurrent consumption is atomic on PostgreSQL. Raw links stay in email/in-memory test adapters, never application logs. Development delivery defaults to discard; production SMTP is not configured. Expired tokens are removed in bounded batches. Email timing is not constant-time; delivery is synchronous with a ten-second SMTP timeout and failure event. Logout is account-wide, including other devices; a concurrent reset/logout can make an in-flight login cookie immediately invalid and the user must log in again.
+
+UI links use fragments, clear them after import (including later links in the same tab), require an explicit action and do not persist passwords/tokens. Account deletion remains disabled; see [ERASURE_REPLAY.md](ERASURE_REPLAY.md). Current tests and remaining gates are in [STAGING_READINESS.md](STAGING_READINESS.md). Earlier stateless-logout descriptions below are historical and superseded by this addition. No primary migration or live provider email was performed.
+
 # NAFSIY V0.9.4.3 — CSRF & Authentication Security
 
 Holat: implementatsiya va test branch sinovlari bajarildi. Yangi head `ade01cf7b885`, parent `f9a045983bdf`. Primary database migratsiya qilinmadi; deploy, commit yoki push bajarilmadi.

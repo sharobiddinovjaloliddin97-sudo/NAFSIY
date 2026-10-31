@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from backend.api import auth, user_data
-from backend.db.auth_models import User
+from backend.db.auth_models import User, RecoveryToken
 from backend.db.auth_security_models import AuthRateLimit
 from security_client import SecurityClient
 from backend.db.database import get_db
@@ -24,7 +24,7 @@ class UserDataTests(unittest.IsolatedAsyncioTestCase):
         def foreign_keys(connection, _):
             connection.execute("PRAGMA foreign_keys=ON")
 
-        for table in (User.__table__, ChatSession.__table__, ChatMessage.__table__, Bookmark.__table__, AuthRateLimit.__table__):
+        for table in (User.__table__, RecoveryToken.__table__, ChatSession.__table__, ChatMessage.__table__, Bookmark.__table__, AuthRateLimit.__table__):
             table.create(self.engine)
 
         def local_db():

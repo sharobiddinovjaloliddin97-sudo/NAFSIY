@@ -1,0 +1,9 @@
+#!/bin/sh
+# Install as /opt/nafsiy/ops/run-backup with owner-only permissions after review.
+# /etc/nafsiy/backup.env must be root/runner-readable only. Never enable shell tracing.
+set -eu
+set -a
+. /etc/nafsiy/backup.env
+set +a
+cd /opt/nafsiy
+exec /opt/nafsiy/.venv/bin/python tools/backup_job.py

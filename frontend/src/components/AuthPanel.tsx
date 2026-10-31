@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import Link from "next/link";
 import { CsrfError, csrfHeaders, csrfRejected } from "@/lib/csrf";
 import {
   UserRound,
@@ -12,8 +13,7 @@ import {
 } from "lucide-react";
 
 const API =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
 
 type User = {
   id: string;
@@ -363,7 +363,8 @@ export default function AuthPanel() {
                   NAFSIY — Islamic AI Companion
                 </p>
 
-                <form onSubmit={submit}>
+                <Link href="/account-recovery">Reset password / verify email</Link> <Link href="/account">Account privacy</Link>
+          <form onSubmit={submit}>
                   {notice && <p className="auth-notice auth-subtitle" role="status">{notice}</p>}
                   <label>
                     Email

@@ -6,6 +6,16 @@ import ipaddress
 
 
 class Settings(BaseSettings):
+    APP_ENV: str = "development"
+    PUBLIC_WEB_URL: str = "http://localhost:3000"
+    EMAIL_MODE: str = "disabled"
+    EMAIL_FROM: str = ""
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    REQUIRE_EMAIL_VERIFICATION: bool = False
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     DATABASE_URL: str
     DB_POOL_SIZE: int = Field(default=3, ge=1, le=20)
     DB_MAX_OVERFLOW: int = Field(default=1, ge=0, le=10)

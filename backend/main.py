@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -25,10 +26,18 @@ from backend.db import operations_models
 from backend.core.auth_maintenance import cleanup_loop
 from backend.core.ai_maintenance import cleanup_loop as ai_cleanup_loop
 from backend.ai.generation import settle
+from backend.core.config import settings
+from backend.core.deployment import validate_staging
+from backend.core.http_monitor import HTTPMonitor
+import logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_staging(settings)
+    logging.getLogger("nafsiy.http").setLevel(logging.INFO)
+    if not logging.getLogger("nafsiy.http").handlers:
+        logging.getLogger("nafsiy.http").addHandler(logging.StreamHandler())
     task = asyncio.create_task(cleanup_loop(getattr(app.state, "auth_maintenance_engine", engine)))
     ai_task = asyncio.create_task(ai_cleanup_loop(getattr(app.state, "auth_maintenance_engine", engine)))
     try:
@@ -54,12 +63,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "Idempotency-Key", "X-CSRF-Token", "X-CSRF-Request"],
     expose_headers=["Retry-After"],
 )
+
+app.add_middleware(HTTPMonitor)
 
 app.include_router(quran_router)
 app.include_router(prayer_router)
@@ -83,9 +94,31 @@ def health():
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+            if settings.APP_ENV == "staging":
+                from backend.db.readiness import head
+                if connection.scalar(text("SELECT version_num FROM alembic_version")) != head():
+                    raise HTTPException(503, "Database revision unavailable")
     except SQLAlchemyError:
         raise HTTPException(
             status_code=503,
             detail="Database unavailable"
         )
     return {"status": "healthy", "database": "connected"}
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    try:
+        response = await call_next(request)
+    except Exception:
+        logging.getLogger("nafsiy.http").error('{"event":"unexpected_request_failure"}')
+        response = JSONResponse({"detail": "Service temporarily unavailable"}, status_code=500)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if settings.APP_ENV == "staging":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    if request.url.path.startswith("/api/v1/auth"):
+        response.headers["Cache-Control"] = "no-store"
+    return response

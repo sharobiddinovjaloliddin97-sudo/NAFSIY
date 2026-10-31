@@ -41,7 +41,13 @@ def epoch(db: Session) -> int:
 def purge_expired(db: Session) -> int:
     try:
         transaction_timeouts(db)
-        removed = _purge(db, epoch(db))
+        now = epoch(db)
+        removed = _purge(db, now)
+        from backend.db.auth_models import RecoveryToken
+        expired = select(RecoveryToken.digest).where(
+            RecoveryToken.expires_at <= datetime.fromtimestamp(now, timezone.utc),
+        ).limit(CLEANUP_BATCH)
+        db.execute(delete(RecoveryToken).where(RecoveryToken.digest.in_(expired)))
         db.commit()
         return removed
     except SQLAlchemyError:

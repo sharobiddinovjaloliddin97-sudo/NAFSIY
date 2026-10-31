@@ -81,6 +81,23 @@ def state():
                 "accounts": db.scalar(select(func.count()).select_from(User))}
 
 
+from backend.core import recovery
+outbox = []
+
+
+class CaptureEmail:
+    def send(self, recipient, purpose, token):
+        outbox.append({"recipient": recipient, "purpose": purpose, "token": token})
+
+
+recovery.delivery = lambda: CaptureEmail()
+
+
+@app.get("/api/v1/__test/outbox")
+def recovery_outbox():
+    return outbox
+
+
 try:
     uvicorn.run(app, host="127.0.0.1", port=8102, log_level="warning", proxy_headers=False)
 finally:

@@ -27,7 +27,7 @@ class SecurityClient(httpx.AsyncClient):
                         bootstrap_headers[name] = headers[name]
                 response = await super().request("GET", "/api/v1/auth/csrf", headers=bootstrap_headers)
                 if response.status_code == 200:
-                    field = "auth_csrf_token" if str(url).split("?")[0].endswith(("/login", "/register")) else "csrf_token"
+                    field = "auth_csrf_token" if (str(url).split("?")[0].endswith(("/login", "/register")) or "/recovery/" in str(url)) else "csrf_token"
                     token = response.json().get(field)
                     if token:
                         headers["X-CSRF-Token"] = token

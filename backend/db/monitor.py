@@ -33,6 +33,12 @@ def backup_health(directory):
             entry = json.loads(path.read_text(encoding="utf-8"))
             if entry.get("success") and entry.get("dump_sha256") == metadata["dump_sha256"]:
                 receipts.append(entry)
+        offsite = Path(directory) / "offsite-receipt.json"
+        if offsite.exists():
+            entry = json.loads(offsite.read_text(encoding="utf-8"))
+            value["offsite_encrypted"] = bool(entry.get("offsite_encrypted") and entry.get("integrity_checked")
+                                             and entry.get("dump_sha256") == metadata["dump_sha256"])
+            value["offsite_receipt_is_local_attestation"] = True
         latest = max(receipts, key=lambda row: row["verified_at_utc"]) if receipts else None
         value.update(present=True, integrity=True,
                      age_hours=max(0, (now - datetime.fromisoformat(metadata["created_at_utc"])).total_seconds() / 3600),

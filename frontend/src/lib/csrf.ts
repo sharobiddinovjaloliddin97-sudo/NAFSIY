@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
 
 type Tokens = { csrf_token: string | null; auth_csrf_token: string; expires_at: number; session_scope: string | null };
 let cached: Tokens | null = null;

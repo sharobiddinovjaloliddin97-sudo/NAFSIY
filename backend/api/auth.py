@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from pwdlib import PasswordHash
 from pwdlib.exceptions import UnknownHashError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -62,11 +62,11 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-def set_auth_cookie(response: Response, user_id: str, secret: str):
+def set_auth_cookie(response: Response, user_id: str, secret: str, version: int = 0):
     now = datetime.now(timezone.utc)
     token = jwt.encode(
         {"sub": user_id, "iat": now, "exp": now + TOKEN_TTL,
-         "iss": JWT_ISSUER, "aud": JWT_AUDIENCE, "jti": secrets.token_hex(16)},
+         "iss": JWT_ISSUER, "aud": JWT_AUDIENCE, "jti": secrets.token_hex(16), "ver": version},
         secret,
         algorithm="HS256",
     )
@@ -100,7 +100,7 @@ def get_current_user(
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(503, "Authentication unavailable", headers={"Cache-Control": "no-store"}) from None
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or claims.get("ver", 0) != user.auth_version or (settings.REQUIRE_EMAIL_VERIFICATION and not user.email_verified):
         raise HTTPException(401, "Invalid or expired session", headers={"Cache-Control": "no-store"})
     if request.method in UNSAFE_METHODS:
         require_session_csrf(request, token)
@@ -129,6 +129,8 @@ def register(data: RegisterRequest, request: Request, response: Response, db: Se
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(503, "Authentication unavailable") from None
+    from backend.core.recovery import request_link
+    request_link(db, str(data.email), "verify")
     return RegistrationResponse()
 
 
@@ -141,6 +143,9 @@ def login(data: LoginRequest, request: Request, response: Response, db: Session 
         encoded = user.password_hash if user else DUMMY_HASH
         user_id = user.id if user else None
         active = user.is_active if user else False
+        initial_version = user.auth_version if user else None
+        if user and settings.REQUIRE_EMAIL_VERIFICATION and not user.email_verified:
+            active = False
         db.rollback()
     except SQLAlchemyError:
         db.rollback()
@@ -154,10 +159,15 @@ def login(data: LoginRequest, request: Request, response: Response, db: Session 
         raise HTTPException(401, "Invalid email or password", headers={"Cache-Control": "no-store"})
     try:
         user = db.get(User, user_id)
-        if user is None or not user.is_active:
+        if user is None or not user.is_active or user.auth_version != initial_version or user.password_hash != encoded:
             raise HTTPException(401, "Invalid email or password", headers={"Cache-Control": "no-store"})
         if updated_hash:
-            user.password_hash = updated_hash
+            changed = db.execute(update(User).where(
+                User.id == user.id, User.auth_version == initial_version, User.password_hash == encoded,
+            ).values(password_hash=updated_hash)).rowcount
+            if changed != 1:
+                db.rollback()
+                raise HTTPException(401, "Invalid email or password")
             db.commit()
         refund_successful_login(db, pair_key)
         db.refresh(user)
@@ -165,7 +175,9 @@ def login(data: LoginRequest, request: Request, response: Response, db: Session 
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(503, "Authentication unavailable", headers={"Cache-Control": "no-store"}) from None
-    set_auth_cookie(response, user.id, secret)
+    # Keep the version authenticated by password verification. A reset/logout
+    # between that check and cookie issuance must invalidate this in-flight login.
+    set_auth_cookie(response, user.id, secret, initial_version)
     return result
 
 
@@ -175,7 +187,13 @@ def me(user: User = Depends(get_current_user)):
 
 
 @router.post("/logout")
-def logout(response: Response, user: User = Depends(get_current_user)):
+def logout(response: Response, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        db.execute(update(User).where(User.id == user.id).values(auth_version=User.auth_version + 1))
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(503, "Authentication unavailable") from None
     response.delete_cookie(
         COOKIE_NAME,
         path="/",
@@ -212,7 +230,7 @@ def csrf_bootstrap(request: Request, response: Response, db: Session = Depends(g
             except SQLAlchemyError:
                 db.rollback()
                 raise HTTPException(503, "Authentication unavailable", headers={"Cache-Control": "no-store"}) from None
-            if user is not None and user.is_active:
+            if user is not None and user.is_active and claims.get("ver", 0) == user.auth_version and (not settings.REQUIRE_EMAIL_VERIFICATION or user.email_verified):
                 session_expiry = int(claims["exp"])
                 session_token = issue_token("session", raw, until=session_expiry)
                 session_scope = hmac.new(security_key("csrf-ui-session"), raw.encode(), hashlib.sha256).hexdigest()
@@ -224,3 +242,47 @@ def csrf_bootstrap(request: Request, response: Response, db: Session = Depends(g
         "session_scope": session_scope,
         "expires_at": min(int(token.split(".")[2]) for token in tokens),
     }
+
+
+class RecoveryRequest(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class RecoveryConfirm(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+
+
+class ResetConfirm(RecoveryConfirm):
+    password: str = Field(min_length=8, max_length=128)
+
+
+@router.post("/recovery/{purpose}/request", status_code=202, dependencies=[Depends(require_login_csrf)])
+def recovery_request(purpose: str, data: RecoveryRequest, request: Request,
+                     response: Response, db: Session = Depends(get_db)):
+    if purpose not in ("verify", "reset"):
+        raise HTTPException(404, "Not found")
+    from backend.core.recovery import request_link
+    email = str(data.email).lower()
+    take_slot(db, "recovery-ip", rate_ip(request), 10, 3600)
+    take_slot(db, "recovery-pair", email + "\0" + rate_ip(request), 3, 3600)
+    request_link(db, email, purpose)
+    response.headers["Cache-Control"] = "no-store"
+    return {"message": "If eligible, account instructions will be sent."}
+
+
+@router.post("/recovery/verify/confirm", dependencies=[Depends(require_login_csrf)])
+def verify_confirm(data: RecoveryConfirm, request: Request, response: Response, db: Session = Depends(get_db)):
+    from backend.core.recovery import consume
+    take_slot(db, "recovery-confirm", rate_ip(request), 20, 3600)
+    consume(db, data.token, "verify")
+    response.headers["Cache-Control"] = "no-store"
+    return {"message": "Email verified. Sign in to continue."}
+
+
+@router.post("/recovery/reset/confirm", dependencies=[Depends(require_login_csrf)])
+def reset_confirm(data: ResetConfirm, request: Request, response: Response, db: Session = Depends(get_db)):
+    from backend.core.recovery import consume
+    take_slot(db, "recovery-confirm", rate_ip(request), 20, 3600)
+    consume(db, data.token, "reset", password_hash.hash(data.password))
+    response.headers["Cache-Control"] = "no-store"
+    return {"message": "Password updated. Sign in again."}

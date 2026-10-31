@@ -1,6 +1,6 @@
 import { CsrfError, csrfHeaders, csrfRejected } from "@/lib/csrf";
 
-export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
 
 export class UserDataError extends Error {
   constructor(public status: number, message: string) {

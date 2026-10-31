@@ -1,0 +1,20 @@
+-- REVIEW ONLY. Run as staging owner after schema migration; never on primary.
+-- Replace role names; create role/password separately through approved secret workflow.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO nafsiy_runtime;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO nafsiy_runtime;
+GRANT INSERT, UPDATE, DELETE ON
+  auth_users, auth_recovery_tokens, auth_rate_limits,
+  chat_sessions, chat_messages, user_bookmarks,
+  ai_rate_limits, ai_idempotency, chat_generation_leases,
+  ai_operations_gate, ai_global_slots, ai_budgets, ai_operations, ai_provider_attempts
+  TO nafsiy_runtime;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nafsiy_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE nafsiy_migrator IN SCHEMA public
+  GRANT SELECT ON TABLES TO nafsiy_runtime;
+ALTER DEFAULT PRIVILEGES FOR ROLE nafsiy_migrator IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO nafsiy_runtime;
+-- Runtime must not own tables, inherit owner membership, or have schema CREATE.
+-- Source tables and alembic_version remain read-only. New state tables need an
+-- explicit reviewed DML grant; default privileges do not silently grant writes.
+-- Readiness preflight runs as migration owner; runtime privileges are checked separately.

@@ -18,7 +18,8 @@
     "7bbcad9d4644_add_ai_idempotency.py": "a65ff0d30b927ce7b3c6ad59736a7e796f4404b26421adf9b0fd55a7cfbaaab1",
     "ade01cf7b885_add_authentication_rate_limits.py": "ad1ceefd1c0c1866a6054a04c28dc1d6ada255d9d43272d9106fcd75788e049d",
     "c4d8e2a9106f_add_ai_operations_and_budgets.py": "0f8bf6dbb5e21982a1bdb1d764f9805018d629b51af5cb175ba87f3b75b65622",
-    "f9a045983bdf_add_generation_leases_and_recovery.py": "9ffbc502e61c39f35c48dc7bc849239b78f9000ed751007f73e0ddf2907b403d"
+    "f9a045983bdf_add_generation_leases_and_recovery.py": "9ffbc502e61c39f35c48dc7bc849239b78f9000ed751007f73e0ddf2907b403d",
+    "e6f1027a93bd_account_recovery.py": "bc428b09a44c49f8599a7a35564018b793fa6f995617201d5b0607518007486a"
   },
-  "schema_fingerprints_sha256_lf": "b72e5af8e82949d4762b9f36a028c2ef000ac3beb41649a40c15f40c0ab4fb40"
+  "schema_fingerprints_sha256_lf": "85fd2a7ceb5be6813c615b3fc8a03bc664493354e6dafdc7f3e772c9e354bffc"
 }
