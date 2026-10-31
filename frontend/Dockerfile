@@ -11,4 +11,4 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 COPY --from=build --chown=node:node /app ./
 USER node
-CMD ["sh", "-c", "exec npm run start -- --hostname 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "exec node node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port ${PORT:-10000}"]

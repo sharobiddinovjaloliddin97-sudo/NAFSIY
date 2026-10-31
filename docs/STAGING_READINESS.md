@@ -6,6 +6,65 @@ Local implementation is reviewable, but the external recovery, infrastructure an
 human release gates below are unresolved. Passing automated tests does not establish
 religious correctness, licensing permission, production security or deployment readiness.
 
+## Local follow-up validation ? 2026-10-31
+
+Baseline for this follow-up: committed V0.9.7 `fab7d44`, clean working tree;
+head remains **e6f1027a93bd**. The 213-test full-suite result below is retained as
+historical evidence. This follow-up reran the affected **six backend tests** (five
+deployment tests plus one staging-health test), not the entire suite.
+
+| Remaining local task | Exact result |
+| --- | --- |
+| Docker backend/frontend execution | **BLOCKED**: Docker/Podman absent from PATH and standard installation locations; WSL launcher returned usage text, no usable Linux environment identified. No images were built or run. |
+| Production-like configuration validation | **PASS**: synthetic settings only, no DB connection; rejects credentials in frontend origin, invalid ports, insecure cookies, wrong origins, disabled verification, deletion enablement, missing providers and excessive capacity. This does not validate provider credentials. |
+| Render blueprint and startup review | **PASS**: current provider schema validation; private API, web HTTP liveness, no startup migrations/automatic deploys. Added 150s platform shutdown allowances, 130s Uvicorn grace and direct Node frontend entrypoint. Linux signal behavior remains BLOCKED without a Linux runtime. |
+| Staging health checks | **PASS**: isolated in-memory tests return 503 for absent/wrong schema revision and 200 for exact head; no primary Neon connection. |
+| Next lint / production build / TypeScript | **PASS**, rebuilt with same-origin API and development build settings to test runtime staging behavior separately. |
+| HTTPS frontend/backend integration and synthetic load | **PASS**: verified local TLS, Secure cookies and runtime HSTS; 100/100 reads at concurrency 8 (p50 656.04ms, p95 716.59ms, p99 1168.96ms); four AI requests returned two 200 and two 429; 31.53s request completed through the proxy. Synthetic Windows/SQLite scope only. |
+| Live SMTP, encrypted offsite recovery, Neon 18 restore, Render deployment | **BLOCKED / NOT PERFORMED**, unchanged. Local fixtures are not evidence for these external gates. |
+
+Local fixes: Next proxy timeout increased from the installed default of 30s to
+135s for the backend's 120s generation budget; frontend starts Node directly for
+container signal delivery; frontend HSTS is emitted from the runtime staging proxy
+rather than depending on build-time APP_ENV; malformed/credential-bearing public
+origins are rejected. `experimental.proxyTimeout` is specific to the pinned Next
+version and must be revalidated during upgrades.
+
+The new `tools/run_local_staging_checks.py` owns loopback ports 8103/3002/3443,
+a temporary SQLite database and an ephemeral certificate trusted only by its test
+client. It seeds synthetic verified accounts directly; it does **not** exercise
+external email delivery. Deletion stays disabled, including inside this fixture.
+It exercises built Next in runtime staging mode through real local TLS, validates
+Secure/HttpOnly/SameSite cookies, CSRF/Origin/ownership, idempotent replay, upstream
+error sanitization/recovery and logout. No real Groq calls or Neon connections are
+made. Results are in `evaluations/local_staging_results.json`; Windows/TLS bridge
+and synthetic SQLite/AI latency must not be presented as Render/Neon benchmarks.
+
+Remaining owner/infrastructure requirements are unchanged: provide an existing
+Linux/Docker runner or approve host installation/feature enablement; authorize
+separate Render/Neon resources and reviewer scope; supply SMTP/test-recipient,
+offsite/key-recovery and monitoring credentials; authorize a new empty PG18 restore
+target and approved provider-call budget; complete privacy, erasure-journal and
+scholarly/licensing review. **No deployment, commit, push, paid provisioning,
+production DB connection or account-deletion enablement occurred in this follow-up.**
+
+Follow-up changed files (separate from the historical V0.9.7 inventory below):
+
+- `Dockerfile.backend`
+- `backend/core/deployment.py`
+- `docs/RENDER_STAGING.md`
+- `docs/STAGING_READINESS.md`
+- `evaluations/local_staging_results.json`
+- `frontend/Dockerfile`
+- `frontend/next.config.ts`
+- `frontend/src/proxy.ts`
+- `render.yaml`
+- `requirements-dev.txt`
+- `tests/local_staging_server.py`
+- `tests/test_deployment.py`
+- `tests/test_staging_health.py`
+- `tools/run_local_staging_checks.py`
+
 ## Repository and preservation
 
 Initial branch `main`, clean working tree, commit `c0fef4e` (V0.9.6). Existing source,

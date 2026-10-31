@@ -5,6 +5,46 @@ Prepared 2026-10-31. **NOT READY** until the release gates in
 accounts, roles or external storage were provisioned, and nothing was deployed.
 Applying `render.yaml` provisions paid resources and requires explicit approval.
 
+## Local follow-up ? 2026-10-31
+
+Current local validation is recorded at the top of STAGING_READINESS.md. Docker
+and Podman remain unavailable; WSL did not expose a usable Linux environment.
+Container builds, Linux non-root behavior and Unix signal handling are therefore
+**BLOCKED**, not passed by static Dockerfile review. No host installation or
+external provisioning was attempted.
+
+The installed Next server defaults to a 30s proxy timeout. The configuration now
+sets `experimental.proxyTimeout=135000`; a real local HTTPS request with a 31s
+synthetic generation validates forwarding beyond the old cutoff. Backend generation
+remains bounded at 120s, Uvicorn graceful shutdown at 130s, and both Render service
+shutdown allowances at 150s. Review actual platform/ingress limits separately.
+The frontend container now execs Node directly instead of npm. This improves signal
+routing but does not establish tested Linux shutdown behavior.
+
+Staging HSTS now comes from runtime `src/proxy.ts`, including gate rejection and
+successful requests. A Docker build does not need staging credentials or APP_ENV
+to embed that header. Cookie Secure/HttpOnly/SameSite behavior is checked through
+an ephemeral, locally trusted HTTPS certificate; this is not proof of Render TLS.
+Frontend `/healthz` remains liveness-only; private API readiness needs a separate
+private-network monitor because Render private services use TCP probes. References:
+https://render.com/docs/health-checks and https://render.com/docs/blueprint-spec.
+
+To reproduce without external DB/email/model calls, install requirements-dev.txt,
+build the frontend with NEXT_PUBLIC_API_URL explicitly empty, then run:
+
+```powershell
+.\.venv\Scripts\python.exe tools/run_local_staging_checks.py
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_deployment.py -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_staging_health.py -v
+.\.venv\Scripts\python.exe tools/validate_deployment.py
+```
+
+The last command only fetches the public Render schema; it does not contact an
+account or deploy. The integration tool requires free loopback ports 8103, 3002,
+3443 and creates/removes only its own processes and synthetic temporary fixtures.
+It keeps account deletion disabled. Do not substitute the older deletion-enabled
+browser fixture for this task's integration checks.
+
 ## Architecture
 
 Reviewer browser → HTTPS Render frontend → Next server proxy → private Render

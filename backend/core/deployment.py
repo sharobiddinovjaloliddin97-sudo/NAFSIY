@@ -9,7 +9,9 @@ def validate_staging(settings):
     if settings.APP_ENV != "staging":
         raise ValueError("Only development or explicitly configured staging is supported")
     origin = urlsplit(settings.PUBLIC_WEB_URL)
-    if origin.scheme != "https" or not origin.hostname or origin.path or origin.query or origin.fragment or origin.username:
+    # Accessing port validates malformed/non-numeric/out-of-range values too.
+    origin.port
+    if origin.scheme != "https" or not origin.hostname or origin.path or origin.query or origin.fragment or origin.username is not None:
         raise ValueError("Staging requires an exact HTTPS frontend origin")
     if settings.AUTH_TRUSTED_ORIGINS != [settings.PUBLIC_WEB_URL] or settings.CORS_ORIGINS != [settings.PUBLIC_WEB_URL]:
         raise ValueError("Staging origin lists must contain only the frontend origin")

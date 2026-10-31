@@ -11,6 +11,12 @@ from backend.db.readiness import ReadinessError
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_origin_credentials_and_invalid_ports_rejected_even_with_matching_lists(self):
+        for origin in ("https://:password@staging.example.invalid", "https://staging.example.invalid:invalid"):
+            with self.subTest(origin=origin), self.assertRaises(ValueError):
+                validate_staging(self.config(PUBLIC_WEB_URL=origin, AUTH_TRUSTED_ORIGINS=[origin],
+                                             CORS_ORIGINS=[origin]))
+
     def config(self, **values):
         defaults = dict(_env_file=None, APP_ENV="staging", DATABASE_URL="postgresql+psycopg://runtime:synthetic@staging.invalid/db?sslmode=require",
             PUBLIC_WEB_URL="https://staging.example.invalid", AUTH_TRUSTED_ORIGINS=["https://staging.example.invalid"],
@@ -26,6 +32,8 @@ class DeploymentTests(unittest.TestCase):
                        dict(EMAIL_MODE="disabled"), dict(REQUIRE_EMAIL_VERIFICATION=False), dict(ACCOUNT_DELETION_ENABLED=True),
                        dict(CORS_ORIGINS=["*"]), dict(AUTH_TRUSTED_ORIGINS=["http://localhost:3000"]),
                        dict(PUBLIC_WEB_URL="http://staging.example.invalid"), dict(SMTP_PASSWORD=""),
+                       dict(PUBLIC_WEB_URL="https://:password@staging.example.invalid"),
+                       dict(PUBLIC_WEB_URL="https://staging.example.invalid:invalid"),
                        dict(DATABASE_URL="postgresql+psycopg://runtime:synthetic@staging.invalid/db"),
                        dict(MAX_GLOBAL_AI_GENERATIONS=3)):
             with self.subTest(names=list(values)), self.assertRaises(ValueError):

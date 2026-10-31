@@ -2,6 +2,7 @@
 services:
   - type: pserv
     name: nafsiy-staging-api
+    maxShutdownDelaySeconds: 150
     runtime: docker
     plan: starter
     region: frankfurt
@@ -45,6 +46,7 @@ services:
         value: "0.60"
   - type: web
     name: nafsiy-staging-web
+    maxShutdownDelaySeconds: 150
     runtime: docker
     plan: starter
     region: frankfurt
