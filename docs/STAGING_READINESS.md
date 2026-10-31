@@ -6,6 +6,57 @@ Local implementation is reviewable, but the external recovery, infrastructure an
 human release gates below are unresolved. Passing automated tests does not establish
 religious correctness, licensing permission, production security or deployment readiness.
 
+## Linux CI and verification follow-up — 2026-10-31
+
+Baseline: committed V0.9.7 checkpoint `7de7bbb` on `main`. Codex completed Linux CI and verification
+foundation before reaching usage limits. All four post-checkpoint files were preserved and completed:
+`.github/workflows/local-verification.yml`, `tools/docker_smoke.py`, `tools/report_backend_tests.py`,
+and `tools/run_isolated_regression.py`.
+
+Full local verification was executed against the owned loopback PostgreSQL 16 cluster:
+
+| Verification step | Result / Metric | Scope / Detail |
+| --- | --- | --- |
+| Full backend suite (`tools/run_isolated_regression.py`) | **215/215 PASS**, 0 failures, 0 errors, **0 skips** (130.687s) | Nonce-owned disposable PG16 cluster; zero primary Neon access. Documented in `evaluations/backend_regression_results.json`. |
+| Render blueprint schema & invariants (`tools/validate_deployment.py`) | **PASS** | Validates against official Render JSON schema; private API, `autoDeployTrigger: "off"`, non-root images, no secrets. |
+| Frontend lint (`npm.cmd --prefix frontend run lint`) | **PASS** | ESLint clean; zero warnings or errors. |
+| Frontend production build (`npm.cmd --prefix frontend run build`) | **PASS** | Next.js 16.4.3 / Turbopack; same-origin build with experimental `proxyTimeout: 135000`. |
+| Local TLS staging integration (`tools/run_local_staging_checks.py`) | **PASS** | 100/100 reads at concurrency 8 (p50: 650.45ms, p95: 712.47ms, p99: 1128.4ms); AI burst 2x200, 2x429; 31.49s proxy request completed; runtime HSTS; deletion disabled. Documented in `evaluations/local_staging_results.json`. |
+| Secret audit (`tools/audit_repository.py`) | **PASS** | 0 configured-secret matches in tracked files, untracked files, and all reachable Git history. Ignored paths verified. |
+| Local Docker execution (`tools/docker_smoke.py`) | **BLOCKED** | Docker CLI not installed/available on local Windows workstation. Clear diagnostic error provided. |
+| Remote GitHub Actions CI execution | **PENDING** | Workflow `.github/workflows/local-verification.yml` ready and validated; pending authorized git commit and push. |
+
+### Completed Linux CI implementation
+
+1. **`.github/workflows/local-verification.yml`**:
+   - Pinned `ubuntu-24.04` runner with least-privilege `permissions: contents: read`.
+   - Concurrency group with `cancel-in-progress: true`.
+   - Sentinel synthetic environment variables (loopback DB URLs on ports 1 and 2, empty `GROQ_API_KEY`, disabled email, disabled deletion).
+   - Pinned actions with immutable commit SHAs (`checkout@11d5960`, `setup-python@a26af69`, `setup-node@49933ea`, `upload-artifact@ea165f8`).
+   - Pinned runtimes: Python 3.13, Node 22 LTS.
+   - Isolated loopback PostgreSQL 16 initialization (`initdb`, `-o "-h 127.0.0.1 -p 55496 -k /tmp"`, `pg_isready` check), guaranteed safe Unix socket permissions, and graceful stop in `always()` step.
+   - Nonce-owned disposable database execution via `tools/run_isolated_regression.py`.
+   - Render configuration validation via `tools/validate_deployment.py`.
+   - Frontend `npm ci`, `npm run lint`, and `npm run build`.
+   - Local staging checks via `tools/run_local_staging_checks.py`.
+   - Docker image build for `nafsiy-backend:ci` and `nafsiy-frontend:ci` (no registry push).
+   - Non-root container startup, internal network proxying, health check, and idle SIGTERM shutdown verification via `tools/docker_smoke.py`.
+   - Strict aggregate results upload (`evaluations/` JSON artifacts only; no env files, logs, or dumps).
+
+2. **`tools/docker_smoke.py`**:
+   - Verified non-root execution (`uid > 0`), private file isolation (`.env`, `backups`, `tmp` absence), internal proxying, Basic auth staging gate, runtime HSTS, and graceful SIGTERM shutdown (exit code 0).
+   - Added clear diagnostic error reporting on missing Docker CLI and container failure log extraction on readiness timeouts.
+   - Robust path handling relative to repository root.
+
+3. **`tools/report_backend_tests.py`**:
+   - Discovers all tests under `tests/`, reports exact run/passed/failed/errors/skipped counts.
+   - Enforces zero skips (`skipped == 0`) and clean exit status.
+   - Writes structured evidence to `evaluations/backend_regression_results.json`.
+
+4. **`tools/run_isolated_regression.py`**:
+   - Integrates `disposable_database` context manager with `report_backend_tests.py`.
+   - Propagates exit status cleanly.
+
 ## Local follow-up validation ? 2026-10-31
 
 Baseline for this follow-up: committed V0.9.7 `fab7d44`, clean working tree;

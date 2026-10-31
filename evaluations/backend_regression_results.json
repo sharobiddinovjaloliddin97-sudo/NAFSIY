@@ -1,0 +1,11 @@
+{
+  "measured_at_utc": "2026-10-31T11:03:02.316243+00:00",
+  "run": 215,
+  "passed": 215,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "expected_failures": 0,
+  "unexpected_successes": 0,
+  "scope": "owned isolated PostgreSQL and synthetic local fixtures; no primary Neon"
+}

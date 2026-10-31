@@ -14,7 +14,7 @@ def main():
         bootstrap(engine, url, name, nonce)
         env = dict(os.environ, TEST_DATABASE_URL=url.render_as_string(hide_password=False),
                    NAFSIY_RUN_POSTGRES_TESTS="1", NAFSIY_RUN_DISPOSABLE_TESTS="1")
-        return subprocess.call([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"], cwd=ROOT, env=env)
+        return subprocess.call([sys.executable, "tools/report_backend_tests.py"], cwd=ROOT, env=env)
 
 
 if __name__ == "__main__":

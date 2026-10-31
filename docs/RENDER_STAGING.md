@@ -5,6 +5,18 @@ Prepared 2026-10-31. **NOT READY** until the release gates in
 accounts, roles or external storage were provisioned, and nothing was deployed.
 Applying `render.yaml` provisions paid resources and requires explicit approval.
 
+## Linux CI and container verification follow-up — 2026-10-31
+
+Linux CI has been completed in `.github/workflows/local-verification.yml` and supporting
+scripts `tools/docker_smoke.py`, `tools/report_backend_tests.py`, and `tools/run_isolated_regression.py`.
+The workflow runs on pinned `ubuntu-24.04`, builds both `nafsiy-backend:ci` and `nafsiy-frontend:ci`,
+verifies non-root uid (`uid > 0`), runs readiness probes (`/api/v1/health` and `/healthz`), tests Basic
+auth staging access gate, verifies runtime HSTS and internal proxying, checks private file absence,
+and verifies idle SIGTERM shutdown with exit code 0 (`docker stop --time 15`).
+
+Local execution of `tools/docker_smoke.py` is BLOCKED due to Docker CLI absence on the Windows
+workstation. Execution is scheduled to run automatically in GitHub Actions on push.
+
 ## Local follow-up ? 2026-10-31
 
 Current local validation is recorded at the top of STAGING_READINESS.md. Docker
