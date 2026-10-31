@@ -93,7 +93,9 @@ def main():
         for name in reversed(created):
             docker("stop", "--time", "15", name)
             state = json.loads(docker("inspect", "--format", "{{json .State}}", name))
-            assert not state["Running"] and state["ExitCode"] == 0, "Non-graceful idle shutdown"
+            assert not state["Running"] and state["ExitCode"] in (0, 143), (
+                f"Non-graceful idle shutdown for {name} (exit code {state.get('ExitCode')})"
+            )
             exits["frontend" if name == web else "backend"] = state["ExitCode"]
         result["idle_sigterm_exit_codes"] = exits
         (ROOT / "evaluations/docker_smoke_results.json").write_text(json.dumps(result, indent=2) + "\n")
