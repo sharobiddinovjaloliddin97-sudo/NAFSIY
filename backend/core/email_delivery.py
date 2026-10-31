@@ -31,9 +31,36 @@ class SMTPDelivery:
             smtp.send_message(message)
 
 
+class ResendDelivery:
+    def send(self, recipient: str, purpose: str, token: str) -> None:
+        import httpx
+        if not settings.RESEND_API_KEY or not settings.EMAIL_FROM:
+            raise ValueError("Resend email delivery is not configured")
+        if settings.APP_ENV == "staging" and settings.EMAIL_FROM.lower().endswith("@resend.dev"):
+            raise ValueError("onboarding@resend.dev is restricted to the account owner and cannot send to arbitrary recipients")
+        payload = {
+            "from": settings.EMAIL_FROM,
+            "to": [recipient],
+            "subject": "NAFSIY account security",
+            "text": (
+                f"Open {settings.PUBLIC_WEB_URL}/account-recovery#{purpose}:{token}\n"
+                "If you did not request this, ignore this message."
+            ),
+        }
+        with httpx.Client(timeout=10, trust_env=False) as client:
+            response = client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+                json=payload,
+            )
+            response.raise_for_status()
+
+
 def delivery() -> Delivery:
     if settings.EMAIL_MODE == "disabled":
         return DisabledDelivery()
     if settings.EMAIL_MODE == "smtp":
         return SMTPDelivery()
+    if settings.EMAIL_MODE == "resend":
+        return ResendDelivery()
     raise ValueError("Unsupported email mode")

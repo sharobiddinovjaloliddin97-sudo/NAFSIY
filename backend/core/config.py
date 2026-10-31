@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
+    RESEND_API_KEY: str = ""
+    STAGING_PROXY_SECRET: str = ""
     REQUIRE_EMAIL_VERIFICATION: bool = False
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     DATABASE_URL: str

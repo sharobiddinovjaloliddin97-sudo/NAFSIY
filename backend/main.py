@@ -1,6 +1,9 @@
-
 import asyncio
 from contextlib import asynccontextmanager
+import hmac
+import posixpath
+import re
+import urllib.parse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,11 +57,18 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+docs_url = "/docs" if settings.APP_ENV == "development" else None
+redoc_url = "/redoc" if settings.APP_ENV == "development" else None
+openapi_url = "/openapi.json" if settings.APP_ENV == "development" else None
+
 app = FastAPI(
     title="NAFSIY API",
     description="Intelligent Islamic Companion",
     version="0.3.0",
     lifespan=lifespan,
+    docs_url=docs_url,
+    redoc_url=redoc_url,
+    openapi_url=openapi_url,
 )
 
 app.add_middleware(
@@ -108,6 +118,25 @@ def health():
 
 @app.middleware("http")
 async def security_headers(request, call_next):
+    if settings.APP_ENV == "staging" and settings.STAGING_PROXY_SECRET:
+        raw_path = request.url.path.split("?")[0]
+        unquoted = urllib.parse.unquote(raw_path)
+        collapsed = re.sub(r"/+", "/", unquoted)
+        path = posixpath.normpath(collapsed).rstrip("/") or "/"
+        if path not in ("/", "/api/v1/health"):
+            incoming = request.headers.get("x-staging-proxy-secret", "")
+            if not hmac.compare_digest(incoming, settings.STAGING_PROXY_SECRET):
+                return JSONResponse(
+                    {"detail": "Forbidden: direct access prohibited"},
+                    status_code=403,
+                    headers={
+                        "X-Content-Type-Options": "nosniff",
+                        "X-Frame-Options": "DENY",
+                        "Referrer-Policy": "no-referrer",
+                        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+                        "Strict-Transport-Security": "max-age=31536000",
+                    },
+                )
     try:
         response = await call_next(request)
     except Exception:

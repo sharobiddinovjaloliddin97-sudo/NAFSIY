@@ -1,0 +1,70 @@
+# ZERO-BUDGET STAGING BLUEPRINT (Free tier only; explicit approval required to apply)
+services:
+  - type: web
+    name: nafsiy-staging-api
+    maxShutdownDelaySeconds: 150
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    autoDeployTrigger: "off"
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PUBLIC_WEB_URL
+        sync: false
+      - key: AUTH_TRUSTED_ORIGINS
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "true"
+      - key: EMAIL_MODE
+        value: resend
+      - key: EMAIL_FROM
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: STAGING_PROXY_SECRET
+        sync: false
+      - key: MAX_GLOBAL_AI_GENERATIONS
+        value: "2"
+      - key: AI_INPUT_USD_PER_MILLION
+        value: "0.15"
+      - key: AI_OUTPUT_USD_PER_MILLION
+        value: "0.60"
+      - key: AI_DAILY_BUDGET_USD
+        value: "2"
+      - key: AI_MONTHLY_BUDGET_USD
+        value: "20"
+  - type: web
+    name: nafsiy-staging-web
+    maxShutdownDelaySeconds: 150
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: .
+    autoDeployTrigger: "off"
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: API_INTERNAL_URL
+        sync: false
+      - key: STAGING_ACCESS_USER
+        sync: false
+      - key: STAGING_ACCESS_PASSWORD
+        sync: false
+      - key: STAGING_PROXY_SECRET
+        sync: false

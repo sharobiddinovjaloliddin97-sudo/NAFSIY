@@ -31,7 +31,10 @@ export function proxy(request: NextRequest) {
     const headers = new Headers(request.headers);
     headers.delete("authorization");
     // Do not forward attacker-supplied identity headers to the private backend.
-    for (const name of ["forwarded", "x-forwarded-for", "x-real-ip"]) headers.delete(name);
+    for (const name of ["forwarded", "x-forwarded-for", "x-real-ip", "x-staging-proxy-secret"]) headers.delete(name);
+    if (process.env.STAGING_PROXY_SECRET) {
+      headers.set("x-staging-proxy-secret", process.env.STAGING_PROXY_SECRET);
+    }
     return secure(NextResponse.rewrite(destination, { request: { headers } }));
   }
   return secure(NextResponse.next());
